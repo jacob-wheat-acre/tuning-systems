@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tuning Systems — Lissajous</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <nav style="margin-bottom:10px;display:flex;gap:16px;font-size:0.8rem;">
+        <span style="color:var(--text);">Lissajous</span>
+        <a href="comma.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Comma</a>
+        <a href="piano.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Piano</a>
+        <a href="harmonics.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Origins</a>
+      </nav>
+      <h1>Tuning Systems</h1>
+      <p class="subtitle">Hear and see how tuning shapes an interval</p>
+    </header>
+
+    <main>
+      <!-- Left: controls -->
+      <section class="controls">
+
+        <div class="control-group">
+          <label class="group-label">Tuning System</label>
+          <div class="tuning-buttons">
+            <button class="tuning-btn" data-tuning="equal">Equal<br><span>ET</span></button>
+            <button class="tuning-btn" data-tuning="pythagorean">Pythagorean<br><span>3:2 fifths</span></button>
+            <button class="tuning-btn active" data-tuning="just">Just<br><span>5-limit</span></button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-label" for="interval-select">Interval</label>
+          <select id="interval-select"></select>
+        </div>
+
+        <div class="control-group">
+          <label class="group-label" for="waveform-select">Waveform</label>
+          <select id="waveform-select">
+            <option value="sine">Sine</option>
+            <option value="triangle">Triangle</option>
+            <option value="sawtooth">Sawtooth</option>
+            <option value="square">Square</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label class="group-label">
+            Phase offset — <span id="phase-label">0°</span>
+          </label>
+          <input type="range" id="phase-slider" min="0" max="100" value="0" step="1">
+          <p class="hint">Rotate the figure; at 90° you get the classic Lissajous orientation</p>
+        </div>
+
+        <button id="play-btn">Play</button>
+
+        <!-- Info panel -->
+        <div class="info-panel">
+          <div class="info-row">
+            <span class="info-label">Interval</span>
+            <span id="interval-name" class="info-value">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">f₁</span>
+            <span id="freq1" class="info-value">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">f₂</span>
+            <span id="freq2" class="info-value">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Deviation</span>
+            <span id="cents-dev" class="info-value">—</span>
+          </div>
+          <div class="info-row">
+            <span id="ratio-display" class="info-ratio">—</span>
+          </div>
+        </div>
+
+        <div class="explainer">
+          <h3>What you're seeing</h3>
+          <p>
+            A Lissajous figure plots <em>x(t) = sin(2πf₁t)</em> against <em>y(t) = sin(2πf₂t)</em>.
+            When f₁/f₂ is a simple integer ratio — like 3:2 in just intonation — the curve closes
+            into a stable geometric shape. In equal temperament the ratio is irrational, so the
+            figure slowly <em>precesses</em>: it never quite repeats.
+          </p>
+          <p>
+            Try switching between tunings on the Perfect 5th: just and Pythagorean give a locked
+            figure; equal temperament slowly rotates.
+          </p>
+        </div>
+
+      </section>
+
+      <!-- Right: Lissajous canvas -->
+      <section class="canvas-area">
+        <div class="canvas-wrap">
+          <canvas id="lissajous-canvas"></canvas>
+        </div>
+        <p class="canvas-hint">Press Play to animate</p>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

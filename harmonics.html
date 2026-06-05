@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Origins of the Scale — Tuning Systems</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .narrative {
+      display: flex;
+      flex-direction: column;
+      gap: 72px;
+      max-width: 760px;
+      margin: 0 auto;
+      padding-bottom: 80px;
+    }
+
+    .story-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+    }
+
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      font-size: 0.62rem;
+      flex-shrink: 0;
+    }
+
+    .story-section h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+    }
+
+    .story-section p {
+      font-size: 0.875rem;
+      color: var(--text-dim);
+      line-height: 1.75;
+      max-width: 640px;
+    }
+
+    .story-section em {
+      color: var(--text);
+      font-style: normal;
+      font-weight: 500;
+    }
+
+    /* ── Harmonic series canvas ─────────────────────────────── */
+
+    .canvas-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .canvas-card canvas {
+      display: block;
+      width: 100%;
+      cursor: pointer;
+    }
+
+    .canvas-footer {
+      padding: 8px 16px 12px;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Interval rows ──────────────────────────────────────── */
+
+    .interval-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .interval-row {
+      display: grid;
+      grid-template-columns: 72px 130px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      transition: border-color 0.15s;
+    }
+
+    .interval-row:hover { border-color: rgba(255,255,255,0.14); }
+
+    .iv-ratio {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .iv-name {
+      font-size: 0.82rem;
+    }
+
+    .iv-detail {
+      font-family: monospace;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Scale builder ──────────────────────────────────────── */
+
+    .scale-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    #scale-canvas {
+      display: block;
+      width: 100%;
+    }
+
+    .scale-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .scale-info {
+      flex: 1;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Play buttons ───────────────────────────────────────── */
+
+    .play-sm {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 6px 12px;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    .play-sm:hover { background: var(--surface); color: var(--text); }
+    .play-sm.active { background: #1a2d1a; border-color: var(--accent-just); color: var(--accent-just); }
+
+    .step-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      transition: background 0.15s;
+    }
+
+    .step-btn:hover { background: var(--bg); }
+    .step-btn:disabled { opacity: 0.35; cursor: default; }
+
+    /* ── Comma callout ──────────────────────────────────────── */
+
+    .comma-callout {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid #ef9a9a;
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .comma-callout .math {
+      font-family: monospace;
+      font-size: 0.82rem;
+      line-height: 1.8;
+      color: var(--text-dim);
+    }
+
+    .comma-callout .math strong { color: var(--text); }
+
+    .comma-link {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 9px 16px;
+      white-space: nowrap;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .comma-link:hover { background: var(--bg); }
+
+    /* ── History cards ──────────────────────────────────────── */
+
+    .history-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .hcard {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .hcard-era {
+      font-size: 0.63rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+    }
+
+    .hcard h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .hcard p {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 2px;
+    }
+
+    .tag {
+      font-size: 0.63rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .tag.good { background: #1a2d1a; color: #a5d6a7; }
+    .tag.bad  { background: #3d1a1a; color: #ef9a9a; }
+
+    /* ── Comparison buttons ─────────────────────────────────── */
+
+    .comparison-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+
+    @media (max-width: 600px) {
+      .history-grid { grid-template-columns: 1fr; }
+      .interval-row { grid-template-columns: 60px 1fr auto; }
+      .iv-detail { display: none; }
+      .comma-callout { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <nav style="margin-bottom:10px;display:flex;gap:16px;font-size:0.8rem;">
+        <a href="index.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Lissajous</a>
+        <a href="comma.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Comma</a>
+        <a href="piano.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Piano</a>
+        <span style="color:var(--text);">Origins</span>
+      </nav>
+      <h1>Origins of the Western Scale</h1>
+      <p class="subtitle">How a vibrating string became twelve notes — and why it almost didn't work.</p>
+    </header>
+
+    <main>
+      <div class="narrative">
+
+        <!-- 1. HARMONIC SERIES -->
+        <section class="story-section">
+          <div class="section-label"><span class="section-num">1</span>The Harmonic Series</div>
+          <h2>A string never plays just one note.</h2>
+          <p>
+            When a string vibrates at 110 Hz, it <em>simultaneously</em> vibrates at every integer multiple
+            of that frequency: 220, 330, 440, 550 Hz and beyond. These are called <em>harmonics</em> or
+            <em>partials</em>. You hear them blended as a single timbre, but they're all present — and
+            every musical interval we use traces back to the ratios between them.
+          </p>
+          <div class="canvas-card">
+            <canvas id="harmonic-canvas"></canvas>
+            <div class="canvas-footer">Tap any string to hear that partial.</div>
+          </div>
+        </section>
+
+        <!-- 2. INTERVALS -->
+        <section class="story-section">
+          <div class="section-label"><span class="section-num">2</span>Intervals from Ratios</div>
+          <h2>The gaps between partials are the intervals we know.</h2>
+          <p>
+            Each adjacent pair of partials has a frequency ratio. The <em>simpler</em> the ratio,
+            the more consonant the interval — because simpler ratios produce waveforms that lock
+            into a stable, repeating pattern. These five ratios are where every tuning system begins.
+          </p>
+          <div class="interval-list" id="interval-list"></div>
+        </section>
+
+        <!-- 3. BUILDING A SCALE -->
+        <section class="story-section">
+          <div class="section-label"><span class="section-num">3</span>Building a Scale</div>
+          <h2>Two ratios are enough to build a complete scale.</h2>
+          <p>
+            Pythagoras (~550 BCE) realized you only need <em>2:1</em> (the octave) and <em>3:2</em>
+            (the perfect fifth) to derive a full set of pitches. Stack a fifth above any note, then
+            fold back into the same octave by halving. After <em>five steps</em> you have the pentatonic
+            scale; after <em>seven</em>, the familiar major scale.
+          </p>
+          <div class="scale-card">
+            <canvas id="scale-canvas" height="150"></canvas>
+            <div class="scale-controls">
+              <button class="step-btn" id="scale-reset">Reset</button>
+              <span class="scale-info" id="scale-info">Step 0 of 12 — start at C</span>
+              <button class="step-btn" id="scale-next">Add fifth →</button>
+            </div>
+          </div>
+          <p>
+            Each note is added by multiplying its predecessor by 3/2, then halving if the result
+            exceeds the octave. At <em>step 5</em> (pentatonic) and <em>step 7</em> (diatonic) the
+            notes cluster into recognizable scale patterns. Continue to step 12 and you nearly return
+            to the starting pitch — but not quite.
+          </p>
+        </section>
+
+        <!-- 4. THE COMMA -->
+        <section class="story-section">
+          <div class="section-label"><span class="section-num">4</span>The Problem</div>
+          <h2>12 fifths should equal 7 octaves. They don't.</h2>
+          <p>
+            After 12 fifths you expect to land back on the starting note, seven octaves higher.
+            Instead you overshoot by <em>23.46 cents</em> — about a quarter of a semitone — called the
+            <em>Pythagorean comma</em>. Every tuning system in history is a different answer to
+            the same question: where do you hide this gap?
+          </p>
+          <div class="comma-callout">
+            <div class="math">
+              <strong>(3/2)¹² = 129.746…</strong><br>
+              2⁷ &nbsp;&nbsp;&nbsp;&nbsp;= 128.000<br>
+              Gap &nbsp;&nbsp;= 1.746 → <strong>23.46 ¢</strong>
+            </div>
+            <a class="comma-link" href="comma.html">Explore the comma →</a>
+          </div>
+        </section>
+
+        <!-- 5. HISTORICAL SOLUTIONS -->
+        <section class="story-section">
+          <div class="section-label"><span class="section-num">5</span>Historical Solutions</div>
+          <h2>Five centuries of compromise.</h2>
+          <p>
+            Each era solved the comma problem differently — trading purity in some intervals for
+            usability across more keys.
+          </p>
+          <div class="history-grid">
+            <div class="hcard">
+              <div class="hcard-era">~550 BCE – Renaissance</div>
+              <h3>Pythagorean</h3>
+              <p>All fifths pure (3:2). The full comma is dumped onto one "wolf" fifth that composers simply avoided.</p>
+              <div class="tags">
+                <span class="tag good">Pure fifths</span>
+                <span class="tag bad">Harsh thirds (81:64)</span>
+                <span class="tag bad">Wolf fifth</span>
+              </div>
+            </div>
+            <div class="hcard">
+              <div class="hcard-era">~1480s</div>
+              <h3>Just Intonation</h3>
+              <p>Adds the 5:4 major third from partial 5. Chords are beatless and pure — but every key needs its own retuning.</p>
+              <div class="tags">
+                <span class="tag good">Pure thirds (5:4)</span>
+                <span class="tag good">Pure fifths</span>
+                <span class="tag bad">Can't modulate keys</span>
+              </div>
+            </div>
+            <div class="hcard">
+              <div class="hcard-era">~1520s</div>
+              <h3>Meantone</h3>
+              <p>Shrink every fifth slightly (by ¼ comma) to make major thirds nearly pure. Works in common keys; wolf persists.</p>
+              <div class="tags">
+                <span class="tag good">Near-pure thirds</span>
+                <span class="tag bad">Wolf fifth</span>
+                <span class="tag bad">Remote keys unusable</span>
+              </div>
+            </div>
+            <div class="hcard">
+              <div class="hcard-era">~1690s</div>
+              <h3>Well Temperament</h3>
+              <p>Distribute the comma unevenly. Each key sounds slightly different — purer, brighter, or darker. Bach's <em>WTC</em> was written to celebrate this variety.</p>
+              <div class="tags">
+                <span class="tag good">All 24 keys usable</span>
+                <span class="tag good">Distinct key characters</span>
+                <span class="tag bad">Non-uniform intervals</span>
+              </div>
+            </div>
+          </div>
+          <div class="hcard" style="margin-top:0">
+            <div class="hcard-era">Standardized ~1800s</div>
+            <h3>Equal Temperament</h3>
+            <p>
+              Divide the octave into 12 perfectly equal semitones, each a ratio of 2^(1/12) ≈ 1.05946.
+              The comma is spread evenly — every fifth is 1.955 cents narrower than pure, every major third
+              is 13.69 cents wider than 5:4. No interval is pure, but every key is <em>identically</em>
+              slightly out of tune. All fixed-pitch instruments today use this.
+            </p>
+            <div class="tags">
+              <span class="tag good">All keys identical</span>
+              <span class="tag good">Free modulation</span>
+              <span class="tag bad">No pure intervals (except octave)</span>
+              <span class="tag bad">No key color</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. WHAT WE GAINED AND LOST -->
+        <section class="story-section">
+          <div class="section-label"><span class="section-num">6</span>What We Gained and Lost</div>
+          <h2>Equal temperament is a tradeoff, not a solution.</h2>
+          <p>
+            The 1.955-cent error in a single ET fifth is nearly imperceptible. But in a major chord,
+            the third is 13.69 cents sharp — wide enough to produce audible <em>beating</em> between the
+            two notes. Singers and string players naturally drift toward just intonation in ensemble,
+            without being taught to. Compare the intervals:
+          </p>
+          <div class="comparison-row" id="comparison-row">
+            <button class="play-sm" data-pair="pure5">▶ Pure fifth (3:2)</button>
+            <button class="play-sm" data-pair="et5">▶ ET fifth (2^7/12)</button>
+            <button class="play-sm" data-pair="pure3">▶ Pure major 3rd (5:4)</button>
+            <button class="play-sm" data-pair="et3">▶ ET major 3rd (2^4/12)</button>
+            <button class="play-sm" id="stop-all">■ Stop</button>
+          </div>
+          <p>
+            The western scale is nature's harmonic series filtered through two thousand years of practical
+            compromise. The 12 notes we have are not inevitable — they're the answer that worked
+            well enough for everything else music wanted to do.
+          </p>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="js/harmonics.js"></script>
+</body>
+</html>

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pythagorean Comma — Tuning Systems</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .comma-layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      flex: 1;
+      align-items: start;
+    }
+
+    .canvas-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .comma-canvas-wrap {
+      width: 100%;
+      aspect-ratio: 1;
+      max-width: 600px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    #comma-canvas { display: block; width: 100%; height: 100%; }
+
+    /* Controls panel */
+    .comma-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step-display {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .step-counter {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    .step-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .step-body {
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    /* Drift meter */
+    .drift-meter {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .drift-meter-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .drift-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .meter-track {
+      height: 8px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .meter-fill {
+      height: 100%;
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.4s ease, background 0.4s ease;
+      background: hsl(120, 85%, 55%);
+    }
+
+    .meter-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+      padding: 0 1px;
+    }
+
+    /* Playback controls */
+    .playback-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 6px;
+    }
+
+    .ctrl-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 10px 6px;
+      transition: background 0.15s, color 0.15s;
+      text-align: center;
+    }
+
+    .ctrl-btn:hover { background: var(--surface); color: var(--text); }
+
+    .ctrl-btn.play-btn {
+      grid-column: span 2;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .ctrl-btn.play-btn.active {
+      background: #1a2d1a;
+      border-color: var(--accent-just);
+      color: var(--accent-just);
+    }
+
+    .speed-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    .speed-row input { flex: 1; accent-color: var(--accent-just); }
+
+    /* Notes table */
+    .notes-table {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .notes-table-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+      padding: 8px 14px;
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .notes-table-body {
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .note-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-family: monospace;
+      opacity: 0.25;
+      transition: opacity 0.3s, color 0.3s;
+    }
+
+    .note-row.reached { opacity: 1; }
+    .note-row.current { font-weight: 700; }
+
+    .nav-back {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-back:hover { color: var(--text); }
+
+    @media (max-width: 800px) {
+      .comma-layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <nav style="display:flex;gap:16px;font-size:0.8rem;margin-bottom:10px;">
+        <a href="index.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Lissajous</a>
+        <span style="color:var(--text);">Comma</span>
+        <a href="piano.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Piano</a>
+        <a href="harmonics.html" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Origins</a>
+      </nav>
+      <h1 style="margin-top:8px;">Stacking Intervals &amp; Commas</h1>
+      <p class="subtitle">Pick a just interval. Stack it until the cycle closes. See what gap is left.</p>
+    </header>
+
+    <main class="comma-layout">
+
+      <!-- Canvas -->
+      <section class="canvas-panel">
+        <div class="comma-canvas-wrap">
+          <canvas id="comma-canvas"></canvas>
+        </div>
+      </section>
+
+      <!-- Controls -->
+      <section class="comma-controls">
+
+        <!-- Interval picker -->
+        <div class="control-group">
+          <label class="group-label" for="interval-select">Interval to stack</label>
+          <select id="interval-select">
+            <option value="0">Major 2nd — 9:8  (6 steps)</option>
+            <option value="1">Minor 3rd — 6:5  (4 steps)</option>
+            <option value="2">Major 3rd — 5:4  (3 steps)</option>
+            <option value="3">Perfect 4th — 4:3  (12 steps)</option>
+            <option value="4" selected>Perfect 5th — 3:2  (12 steps)</option>
+            <option value="5">Major 6th — 5:3  (4 steps)</option>
+            <option value="6">Minor 7th — 9:5  (6 steps)</option>
+          </select>
+        </div>
+
+        <div class="step-display">
+          <div class="step-counter" id="step-counter">Step 0 of 12</div>
+          <div class="step-title" id="step-title">Starting at C</div>
+          <div class="step-body" id="step-body">
+            We'll tune each note by stacking a pure 3:2 fifth above the previous one —
+            the most consonant interval. Equal temperament uses 700¢; a pure fifth is 701.955¢.
+            That tiny difference accumulates with every step.
+          </div>
+        </div>
+
+        <div class="drift-meter">
+          <div class="drift-meter-label">
+            <span>Cumulative drift</span>
+            <span class="drift-value" id="drift-value">0.00 ¢</span>
+          </div>
+          <div class="meter-track">
+            <div class="meter-fill" id="meter-fill"></div>
+          </div>
+          <div class="meter-ticks" id="meter-ticks"></div>
+        </div>
+
+        <div>
+          <div class="playback-controls">
+            <button class="ctrl-btn" id="btn-reset" title="Reset">⏮</button>
+            <button class="ctrl-btn" id="btn-prev" title="Previous step">◀</button>
+            <button class="ctrl-btn play-btn" id="btn-play">▶ Play</button>
+            <button class="ctrl-btn" id="btn-next" title="Next step">▶</button>
+          </div>
+          <div class="speed-row" style="margin-top:10px;">
+            <span>Speed</span>
+            <input type="range" id="speed-slider" min="300" max="2000" value="900" step="100">
+            <span id="speed-label">0.9 s/step</span>
+          </div>
+        </div>
+
+        <!-- Per-note table -->
+        <div class="notes-table">
+          <div class="notes-table-header">
+            <span>Note</span>
+            <span>Pyth. (¢)</span>
+            <span>Drift from ET</span>
+          </div>
+          <div class="notes-table-body" id="notes-table-body"></div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="js/comma.js"></script>
+</body>
+</html>

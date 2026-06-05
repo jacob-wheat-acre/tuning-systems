@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Historical Keyboard Tuning</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* ── piano-specific layout ── */
+    .tuning-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tuning-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 9px 18px;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .tuning-btn:hover { background: var(--surface); color: var(--text); }
+    .tuning-btn[data-tuning="pythagorean"].active  { background:#3d1a1a; border-color:#ef9a9a; color:#ef9a9a; }
+    .tuning-btn[data-tuning="meantone"].active     { background:#1a2d1a; border-color:#a5d6a7; color:#a5d6a7; }
+    .tuning-btn[data-tuning="werckmeister"].active { background:#2d2d10; border-color:#fff176; color:#fff176; }
+    .tuning-btn[data-tuning="equal"].active        { background:#0e2d3f; border-color:#4fc3f7; color:#4fc3f7; }
+
+    /* ── piano canvas ── */
+    .piano-wrap {
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: visible;
+      padding: 28px 16px 16px;
+      position: relative;
+    }
+
+    #piano-canvas {
+      display: block;
+      width: 100%;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    /* ── info row ── */
+    .info-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+    }
+
+    .info-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .info-card h3 {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+
+    .note-pair {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .note-badge {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+    .note-hz {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .interval-line {
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+    .interval-cents {
+      font-family: monospace;
+      font-weight: 600;
+    }
+
+    /* wolf card */
+    .wolf-label {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #ef5350;
+      margin-bottom: 4px;
+    }
+    .wolf-sub {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    /* safe keys grid */
+    .safe-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 5px;
+    }
+
+    .safe-key {
+      border-radius: 6px;
+      padding: 5px 4px;
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      transition: background 0.2s, color 0.2s;
+    }
+    .safe-key.good  { background: #1a2d1a; color: #a5d6a7; border: 1px solid #a5d6a7; }
+    .safe-key.bad   { background: #3d1a1a; color: #ef9a9a; border: 1px solid #ef5350; }
+    .safe-key.neutral { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* tuning description */
+    .tuning-desc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .tuning-desc-card h3 {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+    .tuning-desc-card p, .tuning-desc-card code {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    .tuning-desc-card code {
+      font-family: monospace;
+      color: var(--text);
+      display: block;
+      margin-top: 4px;
+    }
+
+    /* colour legend */
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+    .legend-bar {
+      flex: 1;
+      height: 8px;
+      border-radius: 4px;
+      background: linear-gradient(to right, #4caf50, #ffeb3b, #ff9800, #f44336);
+    }
+
+    nav { margin-bottom: 10px; display: flex; gap: 16px; font-size: 0.8rem; }
+    nav a { color: var(--text-dim); text-decoration: none; }
+    nav a:hover { color: var(--text); }
+    nav span { color: var(--text); }
+
+    @media (max-width: 760px) {
+      .info-row { grid-template-columns: 1fr; }
+      .tuning-desc-card { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <nav>
+        <a href="index.html">Lissajous</a>
+        <a href="comma.html">Comma</a>
+        <span>Piano</span>
+        <a href="harmonics.html">Origins</a>
+      </nav>
+      <h1>Historical Keyboard Tuning</h1>
+      <p class="subtitle">How a piano was actually tuned — and where the wolf hides.</p>
+    </header>
+
+    <main style="display:flex;flex-direction:column;gap:18px;">
+
+      <!-- Tuning selector + audio diagnostic -->
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="tuning-bar">
+          <button class="tuning-btn" data-tuning="pythagorean">Pythagorean</button>
+          <button class="tuning-btn active" data-tuning="meantone">Meantone (¼ comma)</button>
+          <button class="tuning-btn" data-tuning="werckmeister">Werckmeister III</button>
+          <button class="tuning-btn" data-tuning="equal">Equal Temperament</button>
+        </div>
+        <button id="test-audio-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;padding:7px 14px;white-space:nowrap;">
+          🔊 Test Audio
+        </button>
+        <span id="audio-status" style="font-size:0.75rem;color:var(--text-dim);font-family:monospace;"></span>
+      </div>
+
+      <!-- Piano keyboard -->
+      <div class="piano-wrap">
+        <canvas id="piano-canvas" height="180"></canvas>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <span>In tune with ET</span>
+        <div class="legend-bar"></div>
+        <span>Far from ET</span>
+        <span style="margin-left:12px;color:#ef5350">■ wolf fifth</span>
+        <span style="color:#4fc3f7;margin-left:8px">■ selected</span>
+      </div>
+
+      <!-- Info cards -->
+      <div class="info-row">
+
+        <div class="info-card" id="note-card">
+          <h3>Selected notes</h3>
+          <p style="color:var(--text-dim);font-size:0.82rem;">Click a key to hear it.<br>Click a second key to see the interval.</p>
+        </div>
+
+        <div class="info-card" id="wolf-card">
+          <h3>Wolf fifth</h3>
+          <div id="wolf-content">
+            <p style="color:var(--text-dim);font-size:0.82rem;">Select a tuning to see the wolf.</p>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <h3>Safe major keys</h3>
+          <div class="safe-grid" id="safe-grid"></div>
+        </div>
+
+      </div>
+
+      <!-- Tuning description -->
+      <div class="tuning-desc-card">
+        <div>
+          <h3>How it was tuned</h3>
+          <p id="tuning-sequence">—</p>
+        </div>
+        <div>
+          <h3>What this means</h3>
+          <p id="tuning-context">—</p>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script type="module" src="js/piano.js"></script>
+</body>
+</html>
