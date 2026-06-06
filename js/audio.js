@@ -11,6 +11,19 @@ export class AudioEngine {
     this._freq2     = 0;
   }
 
+  // Call this synchronously at the top of every user gesture handler (before
+  // any await). iOS Safari requires AudioContext creation and resume() to happen
+  // within the synchronous portion of the gesture — awaiting first loses the
+  // activation context and audio stays silently blocked.
+  initContext() {
+    if (!this.ctx) {
+      this.ctx = new AudioContext();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
   async _ensureContext() {
     if (!this.ctx) {
       this.ctx = new AudioContext();

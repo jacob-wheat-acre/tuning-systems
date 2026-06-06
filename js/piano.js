@@ -600,8 +600,10 @@ async function handleKeyTap(clientX, clientY) {
 }
 
 canvas.addEventListener('click', async e => {
-  // new AudioContext() must be the very first thing — synchronous, inside user gesture
+  // Create and resume AudioContext synchronously within the user gesture.
+  // iOS Safari requires both to happen before any await, or audio stays blocked.
   if (!_ctx) _ctx = new AudioContext();
+  if (_ctx.state === 'suspended') _ctx.resume().catch(() => {});
 
   const r = canvas.getBoundingClientRect();
   const [px, py] = canvasPos(e.clientX, e.clientY);
@@ -617,7 +619,10 @@ canvas.addEventListener('click', async e => {
 
 canvas.addEventListener('touchstart', async e => {
   e.preventDefault(); // prevent scroll and the follow-up click event
+  // Create and resume AudioContext synchronously within the user gesture.
+  // iOS Safari requires both to happen before any await, or audio stays blocked.
   if (!_ctx) _ctx = new AudioContext();
+  if (_ctx.state === 'suspended') _ctx.resume().catch(() => {});
   const touch = e.touches[0];
   await handleKeyTap(touch.clientX, touch.clientY);
 }, { passive: false });

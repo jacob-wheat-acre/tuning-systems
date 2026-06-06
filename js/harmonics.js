@@ -195,11 +195,13 @@ async function handleHarmonicTap(clientY) {
 }
 
 hCanvas.addEventListener('click', async e => {
+  audio.initContext();
   await handleHarmonicTap(e.clientY);
 });
 
 hCanvas.addEventListener('touchstart', async e => {
   e.preventDefault();
+  audio.initContext();
   await handleHarmonicTap(e.touches[0].clientY);
 }, { passive: false });
 
@@ -224,6 +226,7 @@ KEY_INTERVALS.forEach(iv => {
 
   const btn = row.querySelector('button');
   btn.addEventListener('click', async () => {
+    audio.initContext();
     if (ivActive && ivActive !== btn) {
       ivActive.textContent = '▶ Play';
       ivActive.classList.remove('active');
@@ -385,6 +388,7 @@ function updateScaleInfo() {
 }
 
 document.getElementById('scale-next').addEventListener('click', async () => {
+  audio.initContext();
   if (sStep >= 11) return;
   sStep++;
   drawScale();
@@ -414,6 +418,7 @@ let cmpActive = null;
 
 document.querySelectorAll('[data-pair]').forEach(btn => {
   btn.addEventListener('click', async () => {
+    audio.initContext();
     if (cmpActive && cmpActive !== btn) cmpActive.classList.remove('active');
     if (btn.classList.contains('active')) {
       audio.stop();
