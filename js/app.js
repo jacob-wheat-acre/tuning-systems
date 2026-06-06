@@ -110,6 +110,7 @@ playBtn.addEventListener('click', async () => {
     playBtn.textContent = 'Play';
     playBtn.classList.remove('active');
   } else {
+    audio.initContext(); // unlock AudioContext on iOS before any await
     const [f1, f2] = getFrequencies();
     playBtn.disabled = true;
     await audio.play(f1, f2, state.waveform);
