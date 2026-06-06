@@ -58,19 +58,19 @@ function gcd(a, b) {
 
 let _audioCtx = null;
 
-// Synchronous: create AudioContext within the user gesture if not yet created.
-// Call this at the top of every event handler that might trigger audio, before
-// any await, so iOS Safari sees the creation within the activation context.
+// Synchronous: create AudioContext and kick off resume() within the user gesture.
+// iOS Safari requires resume() to be called from a gesture handler — if it is
+// only called later (e.g. from setInterval) iOS blocks it and audio stays silent.
 function getCtx() {
   if (!_audioCtx) _audioCtx = new AudioContext();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
   return _audioCtx;
 }
 
-// Async: ensure the context is actually running before scheduling nodes.
-// iOS starts AudioContext suspended; resume() must be awaited before
-// ctx.currentTime is meaningful and before nodes will produce sound.
+// Async: wait for the context to actually be running before scheduling nodes.
+// getCtx() fires resume(); this awaits its completion so currentTime is valid.
 async function getRunningCtx() {
-  const ctx = getCtx(); // synchronous — creates context within gesture if first time
+  const ctx = getCtx();
   if (ctx.state !== 'running') await ctx.resume();
   return ctx;
 }
@@ -84,16 +84,16 @@ function freqAtStep(k) {
 }
 
 // Schedule a single tone: fade in, hold, fade out
-function tone(ctx, freq, startTime, duration, amplitude = 0.35) {
-  const osc  = ctx.createOscillator();
-  const gain = ctx.createGain();
+function tone(actx, freq, startTime, duration, amplitude = 0.35) {
+  const osc  = actx.createOscillator();
+  const gain = actx.createGain();
   osc.type = 'sine';
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(amplitude, startTime);
   gain.gain.setValueAtTime(amplitude, startTime + duration - 0.04);
   gain.gain.linearRampToValueAtTime(0, startTime + duration);
   osc.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(actx.destination);
   osc.start(startTime);
   osc.stop(startTime + duration + 0.05);
 }
@@ -107,18 +107,18 @@ async function playStep(k) {
     return;
   }
 
-  const ctx = await getRunningCtx();
-  const now = ctx.currentTime;
-  const dur = 0.65;
+  const actx = await getRunningCtx();
+  const now  = actx.currentTime + 0.005; // small offset avoids Safari t≈now edge case
+  const dur  = 0.65;
 
-  const master = ctx.createGain();
+  const master = actx.createGain();
   master.gain.setValueAtTime(0.38, now);
   master.gain.setValueAtTime(0.38, now + dur - 0.07);
   master.gain.linearRampToValueAtTime(0, now + dur);
-  master.connect(ctx.destination);
+  master.connect(actx.destination);
 
   for (const freq of [freqAtStep(k - 1), freqAtStep(k % 12 === 0 ? 0 : k)]) {
-    const osc = ctx.createOscillator();
+    const osc = actx.createOscillator();
     osc.type = 'sine';
     osc.frequency.value = freq;
     osc.connect(master);
@@ -130,32 +130,26 @@ async function playStep(k) {
 // The money shot: play "expected C" vs "actual comma-shifted C", then both together.
 // The simultaneous playback makes the beating audible and visceral.
 async function playCommaComparison() {
-  const ctx  = await getRunningCtx();
-  const now  = ctx.currentTime;
+  const actx = await getRunningCtx();
+  const now  = actx.currentTime;
 
-  // The note we EXPECTED to return to (pure C4 in the same octave as our root)
   const fExpected = C4;
-  // Where just-stacking actually landed — C4 shifted by the comma
   const fActual   = C4 * Math.pow(2, commaCents / 1200);
   const beatHz    = Math.abs(fActual - fExpected).toFixed(2);
 
-  const SEQ  = 0.75; // length of each solo note
+  const SEQ  = 0.75;
   const GAP  = 0.08;
-  const BOTH = 2.5;  // length of the simultaneous section
+  const BOTH = 2.5;
 
   const t0 = now + 0.05;
-  const t1 = t0 + SEQ + GAP;        // start of second solo note
-  const t2 = t1 + SEQ + GAP;        // start of simultaneous section
+  const t1 = t0 + SEQ + GAP;
+  const t2 = t1 + SEQ + GAP;
 
-  // 1. Play expected C alone
-  tone(ctx, fExpected, t0, SEQ, 0.35);
-  // 2. Play actual (comma-shifted) C alone
-  tone(ctx, fActual,   t1, SEQ, 0.35);
-  // 3. Play both together — you hear the beating
-  tone(ctx, fExpected, t2, BOTH, 0.28);
-  tone(ctx, fActual,   t2, BOTH, 0.28);
+  tone(actx, fExpected, t0, SEQ, 0.35);
+  tone(actx, fActual,   t1, SEQ, 0.35);
+  tone(actx, fExpected, t2, BOTH, 0.28);
+  tone(actx, fActual,   t2, BOTH, 0.28);
 
-  // Update the beat info in the UI after a short delay
   setTimeout(() => {
     const el = document.getElementById('comma-beat-info');
     if (el) el.textContent = `Beating at ${beatHz} Hz — ${(1 / beatHz).toFixed(2)}s per cycle`;
@@ -175,17 +169,14 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', () => { resizeCanvas(); draw(currentStep); });
 
-// Angular position of chromatic note k on circle (C at top, clockwise)
 function noteAngle(k) {
   return -Math.PI / 2 + k * (2 * Math.PI / 12);
 }
 
-// Chromatic position of the note reached at step k
 function noteAtStep(k) {
   return ((k * preset.semitones) % 12 + 12) % 12;
 }
 
-// Green → yellow → red as step goes 0..nSteps
 function stepColor(k) {
   const t = Math.min(k / nSteps, 1);
   return `hsl(${Math.round(120 * (1 - t))}, 85%, 60%)`;
@@ -202,21 +193,18 @@ function draw(step) {
   ctx.fillStyle = '#0d0d14';
   ctx.fillRect(0, 0, W, H);
 
-  // Faint reference ring
   ctx.beginPath();
   ctx.arc(cx, cy, R, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255,255,255,0.07)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Which chromatic positions have been visited, and at which step?
-  const visitedAt = new Map(); // chromPos → first step it was visited
+  const visitedAt = new Map();
   for (let k = 0; k <= Math.min(step, nSteps); k++) {
     const pos = noteAtStep(k);
     if (!visitedAt.has(pos)) visitedAt.set(pos, k);
   }
 
-  // ── Chords for completed steps ──
   for (let k = 1; k <= Math.min(step, nSteps); k++) {
     const fromPos = noteAtStep(k - 1);
     const toPos   = noteAtStep(k % 12);
@@ -235,11 +223,10 @@ function draw(step) {
     ctx.globalAlpha  = 1;
   }
 
-  // ── Comma gap arc when cycle closes ──
   if (step >= nSteps) {
     const gapR     = R + 20;
-    const gapRad   = (commaCents / 1200) * 2 * Math.PI; // signed
-    const cAngle   = noteAngle(0);                        // C position
+    const gapRad   = (commaCents / 1200) * 2 * Math.PI;
+    const cAngle   = noteAngle(0);
     const arcStart = commaCents >= 0 ? cAngle : cAngle + gapRad;
     const arcEnd   = commaCents >= 0 ? cAngle + gapRad : cAngle;
 
@@ -259,7 +246,6 @@ function draw(step) {
       ctx.fill();
     }
 
-    // Label
     const midA  = (arcStart + arcEnd) / 2;
     const labR  = gapR + 38;
     const lx    = cx + labR * Math.cos(midA);
@@ -276,7 +262,6 @@ function draw(step) {
     ctx.restore();
   }
 
-  // ── Note dots and labels ──
   const LABEL_R = R + 34;
   for (let k = 0; k < 12; k++) {
     const angle    = noteAngle(k);
@@ -290,13 +275,11 @@ function draw(step) {
     const isStart  = k === 0;
     const dotColor = visited ? stepColor(vstep) : 'rgba(255,255,255,0.18)';
 
-    // Dot
     ctx.beginPath();
     ctx.arc(nx, ny, isStart ? 7 : visited ? 5 : 3.5, 0, Math.PI * 2);
     ctx.fillStyle = isStart ? '#fff' : dotColor;
     ctx.fill();
 
-    // Ring around C (start) when visited
     if (isStart && step >= 1) {
       ctx.beginPath();
       ctx.arc(nx, ny, 11, 0, Math.PI * 2);
@@ -305,7 +288,6 @@ function draw(step) {
       ctx.stroke();
     }
 
-    // Label
     ctx.save();
     ctx.font         = `${isStart || visited ? 'bold' : ''} 13px system-ui`;
     ctx.fillStyle    = isStart ? '#fff' : dotColor;
@@ -315,7 +297,6 @@ function draw(step) {
     ctx.restore();
   }
 
-  // ── Center readout ──
   const drift      = Math.min(step, nSteps) * driftPerStep;
   const sign       = drift >= 0 ? '+' : '';
   const driftStr   = step === 0 ? '0.00¢' : `${sign}${drift.toFixed(2)}¢`;
@@ -350,7 +331,6 @@ function updateUI(step) {
     : step < nSteps ? `Step ${step} of ${nSteps}`
     : `All ${nSteps} steps complete`;
 
-  // Step title + body
   const { p, q, name, commaName: cname, commaDesc } = preset;
   const etCents = preset.semitones * 100;
 
@@ -372,7 +352,6 @@ function updateUI(step) {
     const fExpected = C4;
     const fActual   = C4 * Math.pow(2, commaCents / 1200);
     const beatHz    = Math.abs(fActual - fExpected).toFixed(2);
-    const beatSec   = (1 / Math.abs(fActual - fExpected)).toFixed(2);
     title = `The ${cname}`;
     body  = `After ${nSteps} pure ${name}s the cycle closes — but we land `
           + `<strong>${commaCents >= 0 ? '+' : ''}${commaCents.toFixed(2)}¢ ${commaCents >= 0 ? 'sharp' : 'flat'}</strong>. `
@@ -385,7 +364,6 @@ function updateUI(step) {
   document.getElementById('step-title').textContent = title;
   document.getElementById('step-body').innerHTML    = body;
 
-  // Drift meter
   const drift    = Math.min(step, nSteps) * driftPerStep;
   const maxDrift = Math.abs(commaCents) * 1.05;
   const pct      = Math.min(Math.abs(drift) / maxDrift * 100, 100);
@@ -398,7 +376,6 @@ function updateUI(step) {
   driftEl.textContent = step === 0 ? '0.00 ¢' : `${s}${drift.toFixed(2)} ¢`;
   driftEl.style.color = step === 0 ? '' : stepColor(Math.min(step, nSteps));
 
-  // Update meter ticks (0 to commaCents absolute)
   const tickEl = document.getElementById('meter-ticks');
   const n = 4;
   tickEl.innerHTML = Array.from({ length: n + 1 }, (_, i) => {
@@ -461,7 +438,7 @@ document.getElementById('interval-select').addEventListener('change', e => {
 // ── Playback ──────────────────────────────────────────────────────────────────────
 
 function togglePlay() {
-  getCtx(); // create AudioContext synchronously within user gesture
+  getCtx(); // create AudioContext + kick off resume() within user gesture
   isPlaying = !isPlaying;
   const btn = document.getElementById('btn-play');
   if (isPlaying) {
@@ -481,7 +458,7 @@ function togglePlay() {
 
 document.getElementById('btn-next').addEventListener('click', () => {
   if (isPlaying) togglePlay();
-  getCtx(); // ensure AudioContext is created within this user gesture
+  getCtx();
   stepForward();
 });
 document.getElementById('btn-prev').addEventListener('click', () => {
@@ -505,7 +482,6 @@ speedSlider.addEventListener('input', () => {
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-// Expose for inline onclick in the dynamically-generated button
 window.playCommaComparison = playCommaComparison;
 
 recompute();
