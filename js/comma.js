@@ -1,7 +1,7 @@
 // Stacking-interval comma visualizer
 // Shows how any pure just interval, stacked until the cycle closes, leaves a gap.
 
-// ── Interval presets ──────────────────────────────────────────────────────────
+// ── Interval presets ────────────────────────────────────────────────────────────
 
 const PRESETS = [
   { name: 'Major 2nd',   semitones: 2,  p: 9, q: 8,
@@ -31,7 +31,7 @@ const PRESETS = [
 const NOTES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const C4    = 261.63; // Hz
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── State ───────────────────────────────────────────────────────────────────
 
 let preset       = PRESETS[4]; // default: perfect fifth
 let currentStep  = 0;
@@ -57,10 +57,22 @@ function gcd(a, b) {
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
 let _audioCtx = null;
+
+// Synchronous: create AudioContext within the user gesture if not yet created.
+// Call this at the top of every event handler that might trigger audio, before
+// any await, so iOS Safari sees the creation within the activation context.
 function getCtx() {
   if (!_audioCtx) _audioCtx = new AudioContext();
-  if (_audioCtx.state === 'suspended') _audioCtx.resume();
   return _audioCtx;
+}
+
+// Async: ensure the context is actually running before scheduling nodes.
+// iOS starts AudioContext suspended; resume() must be awaited before
+// ctx.currentTime is meaningful and before nodes will produce sound.
+async function getRunningCtx() {
+  const ctx = getCtx(); // synchronous — creates context within gesture if first time
+  if (ctx.state !== 'running') await ctx.resume();
+  return ctx;
 }
 
 // Frequency of note at step k: stack k just intervals from C4, octave-reduce
@@ -86,16 +98,16 @@ function tone(ctx, freq, startTime, duration, amplitude = 0.35) {
   osc.stop(startTime + duration + 0.05);
 }
 
-function playStep(k) {
+async function playStep(k) {
   if (k < 1) return;
 
   // At the final step: play the comparison instead of a regular interval
   if (k === nSteps) {
-    playCommaComparison();
+    await playCommaComparison();
     return;
   }
 
-  const ctx = getCtx();
+  const ctx = await getRunningCtx();
   const now = ctx.currentTime;
   const dur = 0.65;
 
@@ -117,8 +129,8 @@ function playStep(k) {
 
 // The money shot: play "expected C" vs "actual comma-shifted C", then both together.
 // The simultaneous playback makes the beating audible and visceral.
-function playCommaComparison() {
-  const ctx  = getCtx();
+async function playCommaComparison() {
+  const ctx  = await getRunningCtx();
   const now  = ctx.currentTime;
 
   // The note we EXPECTED to return to (pure C4 in the same octave as our root)
@@ -179,7 +191,7 @@ function stepColor(k) {
   return `hsl(${Math.round(120 * (1 - t))}, 85%, 60%)`;
 }
 
-// ── Draw ──────────────────────────────────────────────────────────────────────
+// ── Draw ───────────────────────────────────────────────────────────────────────
 
 function draw(step) {
   const W = canvas.width, H = canvas.height;
@@ -418,7 +430,7 @@ function updateTable(step) {
   }
 }
 
-// ── Step logic ────────────────────────────────────────────────────────────────
+// ── Step logic ────────────────────────────────────────────────────────────────────
 
 function setStep(s, playAudio = false) {
   const prev  = currentStep;
@@ -436,7 +448,7 @@ function resetToZero() {
   setStep(0);
 }
 
-// ── Interval selector ─────────────────────────────────────────────────────────
+// ── Interval selector ─────────────────────────────────────────────────────────────
 
 document.getElementById('interval-select').addEventListener('change', e => {
   preset = PRESETS[parseInt(e.target.value)];
@@ -446,10 +458,10 @@ document.getElementById('interval-select').addEventListener('change', e => {
   updateUI(0);
 });
 
-// ── Playback ──────────────────────────────────────────────────────────────────
+// ── Playback ──────────────────────────────────────────────────────────────────────
 
 function togglePlay() {
-  getCtx(); // create AudioContext eagerly inside user gesture
+  getCtx(); // create AudioContext synchronously within user gesture
   isPlaying = !isPlaying;
   const btn = document.getElementById('btn-play');
   if (isPlaying) {
@@ -469,18 +481,20 @@ function togglePlay() {
 
 document.getElementById('btn-next').addEventListener('click', () => {
   if (isPlaying) togglePlay();
+  getCtx(); // ensure AudioContext is created within this user gesture
   stepForward();
 });
 document.getElementById('btn-prev').addEventListener('click', () => {
   if (isPlaying) togglePlay();
+  getCtx();
   stepBack();
 });
 document.getElementById('btn-reset').addEventListener('click', resetToZero);
 document.getElementById('btn-play').addEventListener('click', togglePlay);
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight') { if (isPlaying) togglePlay(); stepForward(); }
-  if (e.key === 'ArrowLeft')  { if (isPlaying) togglePlay(); stepBack(); }
+  if (e.key === 'ArrowRight') { if (isPlaying) togglePlay(); getCtx(); stepForward(); }
+  if (e.key === 'ArrowLeft')  { if (isPlaying) togglePlay(); getCtx(); stepBack(); }
   if (e.key === ' ')          { e.preventDefault(); togglePlay(); }
 });
 
