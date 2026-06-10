@@ -56,19 +56,29 @@ function gcd(a, b) {
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
+const _AudioCtx = window.AudioContext || window.webkitAudioContext;
 let _audioCtx = null;
+let _audioOut  = null; // MediaStreamDestinationNode → <audio> for iOS session fix
 
-// Synchronous: create AudioContext and kick off resume() within the user gesture.
-// iOS Safari requires resume() to be called from a gesture handler — if it is
-// only called later (e.g. from setInterval) iOS blocks it and audio stays silent.
+function _setupAudioRoute() {
+  if (_audioOut) return;
+  try {
+    const dest = _audioCtx.createMediaStreamDestination();
+    const el   = new Audio();
+    el.srcObject = dest.stream;
+    el.play().catch(() => {});
+    _audioOut = dest;
+  } catch (_) {
+    _audioOut = _audioCtx.destination;
+  }
+}
+
 function getCtx() {
-  if (!_audioCtx) _audioCtx = new AudioContext();
+  if (!_audioCtx) { _audioCtx = new _AudioCtx(); _setupAudioRoute(); }
   if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
   return _audioCtx;
 }
 
-// Async: wait for the context to actually be running before scheduling nodes.
-// getCtx() fires resume(); this awaits its completion so currentTime is valid.
 async function getRunningCtx() {
   const ctx = getCtx();
   if (ctx.state !== 'running') await ctx.resume();
@@ -93,7 +103,7 @@ function tone(actx, freq, startTime, duration, amplitude = 0.35) {
   gain.gain.setValueAtTime(amplitude, startTime + duration - 0.04);
   gain.gain.linearRampToValueAtTime(0, startTime + duration);
   osc.connect(gain);
-  gain.connect(actx.destination);
+  gain.connect(_audioOut);
   osc.start(startTime);
   osc.stop(startTime + duration + 0.05);
 }
@@ -115,7 +125,7 @@ async function playStep(k) {
   master.gain.setValueAtTime(0.38, now);
   master.gain.setValueAtTime(0.38, now + dur - 0.07);
   master.gain.linearRampToValueAtTime(0, now + dur);
-  master.connect(actx.destination);
+  master.connect(_audioOut);
 
   for (const freq of [freqAtStep(k - 1), freqAtStep(k % 12 === 0 ? 0 : k)]) {
     const osc = actx.createOscillator();

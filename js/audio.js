@@ -1,8 +1,11 @@
 // Web Audio engine: two oscillators for interval playback
 
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
 export class AudioEngine {
   constructor() {
     this.ctx        = null;
+    this._out       = null; // MediaStreamDestinationNode → <audio> for iOS session fix
     this.osc1       = null;
     this.osc2       = null;
     this.masterGain = null;
@@ -11,13 +14,31 @@ export class AudioEngine {
     this._freq2     = 0;
   }
 
+  // Route Web Audio through a MediaStreamDestination → <audio> element.
+  // On iPadOS 26, AudioContext uses the 'ambient' audio session (silenced by
+  // software mute). Piping through <audio srcObject> forces 'playback' session.
+  // Must be called synchronously inside a user gesture so el.play() is allowed.
+  _setupRoute() {
+    if (this._out) return;
+    try {
+      const dest = this.ctx.createMediaStreamDestination();
+      const el   = new Audio();
+      el.srcObject = dest.stream;
+      el.play().catch(() => {});
+      this._out = dest;
+    } catch (_) {
+      this._out = this.ctx.destination;
+    }
+  }
+
   // Call this synchronously at the top of every user gesture handler (before
   // any await). iOS Safari requires AudioContext creation and resume() to happen
   // within the synchronous portion of the gesture — awaiting first loses the
   // activation context and audio stays silently blocked.
   initContext() {
     if (!this.ctx) {
-      this.ctx = new AudioContext();
+      this.ctx = new AudioCtx();
+      this._setupRoute();
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
@@ -26,10 +47,9 @@ export class AudioEngine {
 
   async _ensureContext() {
     if (!this.ctx) {
-      this.ctx = new AudioContext();
+      this.ctx = new AudioCtx();
+      this._setupRoute();
     }
-    // Browsers may suspend the context even after a user gesture on some versions.
-    // Awaiting resume() ensures nodes are usable before we start them.
     if (this.ctx.state !== 'running') {
       await this.ctx.resume();
     }
@@ -43,7 +63,7 @@ export class AudioEngine {
     // Start silent, ramp up — single clean automation event, no conflict
     this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
     this.masterGain.gain.linearRampToValueAtTime(0.45, this.ctx.currentTime + 0.03);
-    this.masterGain.connect(this.ctx.destination);
+    this.masterGain.connect(this._out);
 
     this.osc1 = this._makeOsc(freq1, waveform);
     this.osc2 = this._makeOsc(freq2, waveform);
@@ -123,7 +143,7 @@ export class AudioEngine {
     gain.gain.linearRampToValueAtTime(0.35, t + 0.02);
     gain.gain.setValueAtTime(0.35, t + durationMs / 1000 - 0.05);
     gain.gain.linearRampToValueAtTime(0, t + durationMs / 1000);
-    gain.connect(ctx.destination);
+    gain.connect(this._out);
 
     for (const freq of [freq1, freq2]) {
       const osc      = ctx.createOscillator();
