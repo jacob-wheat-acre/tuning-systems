@@ -375,6 +375,7 @@ function canvasPos(clientX, clientY) {
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 
 let _ctx = null;
+let _out = null; // AudioNode all voices connect to
 
 function setAudioStatus(msg) {
   const el = document.getElementById('audio-status');
@@ -382,12 +383,29 @@ function setAudioStatus(msg) {
   console.log('[piano audio]', msg);
 }
 
-// Ensure AudioContext exists and is running. Must be called inside a user gesture
-// so that new AudioContext() is created with activation. We then await resume()
-// so oscillators are never scheduled against a suspended context.
+// On iPadOS 26, AudioContext uses a different audio session category than
+// <audio> elements and is silenced by the software mute switch. Routing Web
+// Audio through a MediaStreamDestination → <audio srcObject> forces the
+// "playback" session, which is never muted. Called synchronously inside a
+// user gesture so el.play() has gesture context.
+function setupAudioRoute() {
+  try {
+    const streamDest = _ctx.createMediaStreamDestination();
+    const el = new Audio();
+    el.srcObject = streamDest.stream;
+    el.play().catch(() => {});
+    _out = streamDest;
+    setAudioStatus('route: stream→audio element');
+  } catch (_e) {
+    _out = _ctx.destination;
+    setAudioStatus('route: direct destination');
+  }
+}
+
 async function ensureRunning() {
   if (!_ctx) {
     _ctx = new AudioCtx();
+    setupAudioRoute();
     setAudioStatus(`ctx created: ${_ctx.state}`);
   }
   if (_ctx.state !== 'running') {
@@ -437,7 +455,7 @@ function scheduleNote(actx, freq) {
   src.buffer = makeSineBuffer(actx, freq, 1.4);
   gain.gain.value = 0.5;
   src.connect(gain);
-  gain.connect(actx.destination);
+  gain.connect(_out);
   src.start(actx.currentTime + 0.001);
   setAudioStatus(`playing ${freq.toFixed(1)} Hz`);
 }
@@ -466,7 +484,7 @@ function startSustainedNote(semitone) {
   src.loop   = true;
   gain.gain.value = 0.5;
   src.connect(gain);
-  gain.connect(_ctx.destination);
+  gain.connect(_out);
   src.start(_ctx.currentTime + 0.001);
   setAudioStatus(`touch ${freq.toFixed(1)} Hz (${_ctx.state})`);
   return { osc: src, gain };
@@ -490,7 +508,7 @@ async function testAudio() {
     src.buffer = makeSineBuffer(actx, 440, 0.6);
     gain.gain.value = 0.7;
     src.connect(gain);
-    gain.connect(actx.destination);
+    gain.connect(_out);
     src.start(actx.currentTime + 0.001);
     src.addEventListener('ended', () => setAudioStatus('test done — did you hear a beep?'));
     setAudioStatus('test: tone started — listen!');
@@ -815,7 +833,10 @@ document.getElementById('chord-mode-btn').addEventListener('click', () => {
 // Doing it here (before the first piano key tap) ensures the context is already
 // running by the time any note is requested.
 document.addEventListener('touchstart', function warmUp() {
-  if (!_ctx) _ctx = new AudioCtx();
+  if (!_ctx) {
+    _ctx = new AudioCtx();
+    setupAudioRoute(); // must be synchronous within gesture for el.play()
+  }
   if (_ctx.state !== 'running') _ctx.resume();
   document.removeEventListener('touchstart', warmUp);
 }, { passive: true, capture: true });
