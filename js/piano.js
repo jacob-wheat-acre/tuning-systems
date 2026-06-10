@@ -139,10 +139,9 @@ function isKeySafe(root, tuningKey) {
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentTuning = 'meantone';
 let keys          = [];       // [{semitone, degree, octave, isBlack, x, y, w, h}]
-let selected      = [];       // selected semitone values (up to 2 in interval mode, unlimited in chord mode)
+let selected      = [];       // up to 2 selected semitones for interval display
 let hovered       = null;
-let chordMode     = false;
-const touchNotes  = new Map(); // touch.identifier → { semitone, osc, gain }
+const touchNotes  = new Map(); // touch.identifier → { semitone }
 
 // ── Canvas ────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('piano-canvas');
@@ -471,10 +470,6 @@ async function playInterval(s1, s2, tuningKey) {
   scheduleNote(actx, semitoneFreq(s2, tuningKey));
 }
 
-async function playChordNotes(semitones) {
-  const actx = await ensureRunning();
-  semitones.forEach(s => scheduleNote(actx, semitoneFreq(s, currentTuning)));
-}
 
 function startSustainedNote(semitone) {
   const freq = semitoneFreq(semitone, currentTuning);
@@ -573,16 +568,12 @@ function updateNoteCard() {
   const tuning = TUNINGS[currentTuning];
 
   if (selected.length === 0) {
-    card.innerHTML = chordMode
-      ? '<h3>Chord</h3><p style="color:var(--text-dim);font-size:0.82rem;">Tap keys to build a chord.<br>Tap again to remove a note.</p>'
-      : '<h3>Selected notes</h3><p style="color:var(--text-dim);font-size:0.82rem;">Tap a key to hear it.<br>Tap a second key to see the interval.</p>';
+    card.innerHTML = '<h3>Selected notes</h3><p style="color:var(--text-dim);font-size:0.82rem;">Tap a key to hear it.<br>Tap a second key to see the interval.</p>';
     return;
   }
 
   const sorted = [...selected].sort((a, b) => a - b);
-  let html = chordMode
-    ? `<h3>Chord &nbsp;<span style="font-weight:400;font-size:0.75rem;color:var(--text-dim)">${sorted.map(s => NOTE_NAMES[s % 12]).join(' – ')}</span></h3>`
-    : '<h3>Selected notes</h3>';
+  let html = '<h3>Selected notes</h3>';
 
   sorted.forEach(s => {
     const deg  = s % 12;
@@ -596,7 +587,7 @@ function updateNoteCard() {
     </div>`;
   });
 
-  if (!chordMode && sorted.length === 2) {
+  if (sorted.length === 2) {
     const [s1, s2] = sorted;
     const f1    = semitoneFreq(s1, currentTuning);
     const f2    = semitoneFreq(s2, currentTuning);
@@ -688,28 +679,19 @@ async function handleKeyTap(clientX, clientY) {
 
   setAudioStatus(`${NOTE_NAMES[key.degree]}${key.octave} @ ${semitoneFreq(key.semitone, currentTuning).toFixed(1)} Hz`);
 
-  if (chordMode) {
-    if (selected.includes(key.semitone)) {
-      selected = selected.filter(s => s !== key.semitone);
-    } else {
-      selected.push(key.semitone);
-    }
-    if (selected.length > 0) await playChordNotes(selected);
-  } else {
-    if (selected.includes(key.semitone)) {
-      selected = selected.filter(s => s !== key.semitone);
-      playKey(key.semitone, currentTuning);
-    } else if (selected.length < 2) {
-      selected.push(key.semitone);
-      if (selected.length === 2) {
-        playInterval(selected[0], selected[1], currentTuning);
-      } else {
-        playKey(key.semitone, currentTuning);
-      }
-    } else {
-      selected = [selected[1], key.semitone];
+  if (selected.includes(key.semitone)) {
+    selected = selected.filter(s => s !== key.semitone);
+    playKey(key.semitone, currentTuning);
+  } else if (selected.length < 2) {
+    selected.push(key.semitone);
+    if (selected.length === 2) {
       playInterval(selected[0], selected[1], currentTuning);
+    } else {
+      playKey(key.semitone, currentTuning);
     }
+  } else {
+    selected = [selected[1], key.semitone];
+    playInterval(selected[0], selected[1], currentTuning);
   }
 
   draw();
@@ -797,13 +779,6 @@ document.querySelectorAll('.tuning-btn').forEach(btn => {
   });
 });
 
-document.getElementById('chord-mode-btn').addEventListener('click', () => {
-  chordMode = !chordMode;
-  document.getElementById('chord-mode-btn').classList.toggle('active', chordMode);
-  selected = [];
-  draw();
-  updateNoteCard();
-});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 

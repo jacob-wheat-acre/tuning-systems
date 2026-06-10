@@ -30,9 +30,7 @@
     .tuning-btn[data-tuning="werckmeister"].active { background:#2d2d10; border-color:#fff176; color:#fff176; }
     .tuning-btn[data-tuning="equal"].active        { background:#0e2d3f; border-color:#4fc3f7; color:#4fc3f7; }
 
-    #chord-mode-btn.active { background:#00352c; border-color:#4db6ac; color:#4db6ac; }
-
-    /* ── piano canvas ── */
+/* ── piano canvas ── */
     .piano-wrap {
       background: #111;
       border: 1px solid var(--border);
@@ -209,10 +207,7 @@
           <button class="tuning-btn" data-tuning="werckmeister">Werckmeister III</button>
           <button class="tuning-btn" data-tuning="equal">Equal Temperament</button>
         </div>
-        <button id="chord-mode-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;font-weight:600;padding:7px 14px;white-space:nowrap;touch-action:manipulation;">
-          Chord
-        </button>
-        <button id="test-audio-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;padding:7px 14px;white-space:nowrap;">
+<button id="test-audio-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;padding:7px 14px;white-space:nowrap;">
           🔊 WebAudio
         </button>
         <button id="test-html-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;padding:7px 14px;white-space:nowrap;">
@@ -240,7 +235,7 @@
 
         <div class="info-card" id="note-card">
           <h3>Selected notes</h3>
-          <p style="color:var(--text-dim);font-size:0.82rem;">Click a key to hear it.<br>Click a second key to see the interval.</p>
+          <p style="color:var(--text-dim);font-size:0.82rem;">Tap a key to hear it.<br>Tap a second key to see the interval.</p>
         </div>
 
         <div class="info-card" id="wolf-card">
