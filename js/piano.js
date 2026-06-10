@@ -737,14 +737,12 @@ canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   if (!_ctx) { _ctx = new AudioCtx(); setupAudioRoute(); }
   if (_ctx.state !== 'running') _ctx.resume();
-  // Fully synchronous — touchend must be able to find notes in touchNotes immediately.
-  // The context is pre-warmed by the document warmUp handler so no await needed.
   for (const touch of e.changedTouches) {
     const [px, py] = canvasPos(touch.clientX, touch.clientY);
     const key = keyAt(px, py);
     if (!key) continue;
-    if (touchNotes.has(touch.identifier)) stopSustainedNote(touchNotes.get(touch.identifier));
-    touchNotes.set(touch.identifier, { semitone: key.semitone, ...startSustainedNote(key.semitone) });
+    scheduleNote(_ctx, semitoneFreq(key.semitone, currentTuning));
+    touchNotes.set(touch.identifier, { semitone: key.semitone });
   }
   draw();
 }, { passive: false });
@@ -757,26 +755,19 @@ canvas.addEventListener('touchmove', e => {
     const [px, py] = canvasPos(touch.clientX, touch.clientY);
     const key = keyAt(px, py);
     if (!key || key.semitone === existing.semitone) continue;
-    stopSustainedNote(existing);
-    touchNotes.set(touch.identifier, { semitone: key.semitone, ...startSustainedNote(key.semitone) });
+    scheduleNote(_ctx, semitoneFreq(key.semitone, currentTuning));
+    touchNotes.set(touch.identifier, { semitone: key.semitone });
     draw();
   }
 }, { passive: false });
 
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
-  for (const touch of e.changedTouches) {
-    const node = touchNotes.get(touch.identifier);
-    if (node) { stopSustainedNote(node); touchNotes.delete(touch.identifier); }
-  }
+  for (const touch of e.changedTouches) touchNotes.delete(touch.identifier);
   draw();
 }, { passive: false });
 
-canvas.addEventListener('touchcancel', () => {
-  touchNotes.forEach(stopSustainedNote);
-  touchNotes.clear();
-  draw();
-});
+canvas.addEventListener('touchcancel', () => { touchNotes.clear(); draw(); });
 
 canvas.addEventListener('mousemove', e => {
   const [px, py] = canvasPos(e.clientX, e.clientY);
@@ -797,7 +788,6 @@ document.querySelectorAll('.tuning-btn').forEach(btn => {
     btn.classList.add('active');
     currentTuning = btn.dataset.tuning;
     selected = [];
-    touchNotes.forEach(stopSustainedNote);
     touchNotes.clear();
     draw();
     updateNoteCard();
