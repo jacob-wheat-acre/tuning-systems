@@ -502,6 +502,46 @@ async function testAudio() {
 
 document.getElementById('test-audio-btn').addEventListener('click', testAudio);
 
+// ── HTML Audio test (bypasses Web Audio API entirely) ─────────────────────────
+// If this works but WebAudio doesn't, the issue is audio session category.
+function makeWavBlob(freq, duration) {
+  const sr  = 22050;
+  const n   = Math.floor(sr * duration);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v   = new DataView(buf);
+  let   o   = 0;
+  const str = s => { for (let i = 0; i < s.length; i++) v.setUint8(o++, s.charCodeAt(i)); };
+  str('RIFF'); v.setUint32(o, 36 + n * 2, true); o += 4;
+  str('WAVE'); str('fmt ');
+  v.setUint32(o, 16, true);      o += 4;
+  v.setUint16(o, 1, true);       o += 2;  // PCM
+  v.setUint16(o, 1, true);       o += 2;  // mono
+  v.setUint32(o, sr, true);      o += 4;  // sample rate
+  v.setUint32(o, sr * 2, true);  o += 4;  // byte rate
+  v.setUint16(o, 2, true);       o += 2;  // block align
+  v.setUint16(o, 16, true);      o += 2;  // bits per sample
+  str('data'); v.setUint32(o, n * 2, true); o += 4;
+  for (let i = 0; i < n; i++) {
+    const t   = i / sr;
+    const env = Math.max(0, 1 - t / duration);
+    v.setInt16(o, Math.round(Math.sin(2 * Math.PI * freq * t) * env * 16383), true);
+    o += 2;
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+document.getElementById('test-html-btn').addEventListener('click', () => {
+  setAudioStatus('html: generating…');
+  const url   = URL.createObjectURL(makeWavBlob(440, 0.6));
+  const audio = new Audio(url);
+  audio.play()
+    .then(() => {
+      setAudioStatus('html: playing — can you hear it?');
+      audio.addEventListener('ended', () => { URL.revokeObjectURL(url); setAudioStatus('html: done'); });
+    })
+    .catch(err => setAudioStatus(`html FAILED: ${err.message}`));
+});
+
 // ── UI updates ────────────────────────────────────────────────────────────────
 
 function noteLabel(semitone) {
