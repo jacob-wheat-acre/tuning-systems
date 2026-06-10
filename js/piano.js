@@ -408,21 +408,37 @@ function semitoneFreq(semitone, tuningKey) {
   return C3_HZ * Math.pow(2, octave + cents / 1200);
 }
 
+// Build a PCM sine-wave buffer. More reliable than OscillatorNode on iOS 26 Safari.
+function makeSineBuffer(actx, freq, duration) {
+  const sr   = actx.sampleRate;
+  const n    = Math.ceil(sr * duration);
+  const buf  = actx.createBuffer(1, n, sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    data[i] = Math.sin(2 * Math.PI * freq * t) * Math.max(0, 1 - t / duration);
+  }
+  return buf;
+}
+
+// One-period looping buffer for sustained touch notes (no loop-point click).
+function makeSineLoopBuffer(actx, freq) {
+  const sr  = actx.sampleRate;
+  const len = Math.round(sr / freq);
+  const buf = actx.createBuffer(1, len, sr);
+  const d   = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.sin(2 * Math.PI * i / len);
+  return buf;
+}
+
 function scheduleNote(actx, freq) {
-  const now  = actx.currentTime;
-  const end  = now + 1.4;
-  const osc  = actx.createOscillator();
+  const src  = actx.createBufferSource();
   const gain = actx.createGain();
-  osc.type = 'sine';
-  osc.frequency.value = freq;
-  // Safari-safe envelope: start at full volume, linear ramp to silence.
-  // Avoid exponentialRamp (Safari bugs with small values) and setValueAtTime(0).
-  gain.gain.setValueAtTime(0.4, now);
-  gain.gain.linearRampToValueAtTime(0.0001, end);
-  osc.connect(gain);
+  src.buffer = makeSineBuffer(actx, freq, 1.4);
+  gain.gain.value = 0.5;
+  src.connect(gain);
   gain.connect(actx.destination);
-  osc.start(now + 0.001); // tiny offset avoids Safari t=0 scheduling edge case
-  osc.stop(end + 0.05);
+  src.start(actx.currentTime + 0.001);
   setAudioStatus(`playing ${freq.toFixed(1)} Hz`);
 }
 
@@ -444,16 +460,16 @@ async function playChordNotes(semitones) {
 
 function startSustainedNote(semitone) {
   const freq = semitoneFreq(semitone, currentTuning);
-  const now  = _ctx.currentTime;
-  const osc  = _ctx.createOscillator();
+  const src  = _ctx.createBufferSource();
   const gain = _ctx.createGain();
-  osc.type = 'sine';
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.32, now);
-  osc.connect(gain);
+  src.buffer = makeSineLoopBuffer(_ctx, freq);
+  src.loop   = true;
+  gain.gain.value = 0.5;
+  src.connect(gain);
   gain.connect(_ctx.destination);
-  osc.start(now + 0.001);
-  return { osc, gain };
+  src.start(_ctx.currentTime + 0.001);
+  setAudioStatus(`touch ${freq.toFixed(1)} Hz (${_ctx.state})`);
+  return { osc: src, gain };
 }
 
 function stopSustainedNote({ osc, gain }) {
@@ -463,29 +479,21 @@ function stopSustainedNote({ osc, gain }) {
   try { osc.stop(now + 0.1); } catch (_) {}
 }
 
-// Standalone test: creates a fresh AudioContext, resumes it, plays 440 Hz
+// Test button: reuses _ctx so there's only ever one AudioContext on the page.
 async function testAudio() {
   try {
-    const tctx = new AudioCtx();
-    setAudioStatus(`test ctx: ${tctx.state}`);
-    if (tctx.state !== 'running') {
-      await tctx.resume();
-      setAudioStatus(`test ctx after resume: ${tctx.state}`);
-    }
-    const osc  = tctx.createOscillator();
-    const gain = tctx.createGain();
-    osc.frequency.value = 440;
-    // Safari-safe: no exponentialRamp, no setValueAtTime(0)
-    gain.gain.setValueAtTime(0.5, tctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.0001, tctx.currentTime + 0.5);
-    osc.connect(gain);
-    gain.connect(tctx.destination);
-    osc.start(tctx.currentTime + 0.001);
-    osc.stop(tctx.currentTime + 0.45);
-    osc.addEventListener('ended', () => {
-      tctx.close();
-      setAudioStatus('test done — did you hear a beep?');
-    });
+    setAudioStatus('test: ensuring ctx…');
+    const actx = await ensureRunning();
+    setAudioStatus(`test: ctx ${actx.state} — scheduling tone…`);
+    const src  = actx.createBufferSource();
+    const gain = actx.createGain();
+    src.buffer = makeSineBuffer(actx, 440, 0.6);
+    gain.gain.value = 0.7;
+    src.connect(gain);
+    gain.connect(actx.destination);
+    src.start(actx.currentTime + 0.001);
+    src.addEventListener('ended', () => setAudioStatus('test done — did you hear a beep?'));
+    setAudioStatus('test: tone started — listen!');
   } catch (err) {
     setAudioStatus(`test FAILED: ${err.message}`);
     console.error('[piano audio] testAudio error:', err);
