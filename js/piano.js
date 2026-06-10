@@ -417,24 +417,37 @@ function makeWavBlob(freq, duration) {
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-// Blob URL cache: freq.toFixed(2) → object URL
-// Pre-populated for every key whenever the tuning changes so there is no
-// WAV generation cost at keypress time.
-const _noteUrls = new Map();
+// Per-frequency pool of pre-loaded Audio elements.
+// el.load() causes Safari to decode the WAV immediately so that play() can
+// start from an already-decoded buffer rather than decoding on-demand.
+// Pool holds 2 elements per note to handle quick re-taps of the same key.
+// After each use a replacement is loaded asynchronously to refill the slot.
+const _notePool = new Map(); // freq.toFixed(2) → { url, ready: Audio[] }
 
-function _noteUrl(freq) {
+function _makeEl(url) {
+  const el = new Audio(url);
+  el.load();
+  return el;
+}
+
+function _ensurePool(freq) {
   const k = freq.toFixed(2);
-  if (!_noteUrls.has(k)) _noteUrls.set(k, URL.createObjectURL(makeWavBlob(freq, 1.4)));
-  return _noteUrls.get(k);
+  if (_notePool.has(k)) return;
+  const url = URL.createObjectURL(makeWavBlob(freq, 1.4));
+  _notePool.set(k, { url, ready: [_makeEl(url), _makeEl(url)] });
 }
 
 function warmupNotes() {
-  for (const key of keys) _noteUrl(semitoneFreq(key.semitone, currentTuning));
+  for (const key of keys) _ensurePool(semitoneFreq(key.semitone, currentTuning));
 }
 
 function scheduleNote(freq) {
-  const el = new Audio(_noteUrl(freq));
+  _ensurePool(freq);
+  const entry = _notePool.get(freq.toFixed(2));
+  const el    = entry.ready.pop() ?? new Audio(entry.url);
   el.play().catch(() => {});
+  // Refill pool slot after a short delay so the next tap has a pre-loaded element
+  setTimeout(() => entry.ready.push(_makeEl(entry.url)), 200);
   setAudioStatus(`${freq.toFixed(1)} Hz`);
 }
 
