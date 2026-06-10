@@ -733,29 +733,18 @@ canvas.addEventListener('click', async e => {
   await handleKeyTap(e.clientX, e.clientY);
 });
 
-canvas.addEventListener('touchstart', async e => {
+canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if (!_ctx) _ctx = new AudioCtx();
-  // resume() MUST be called synchronously within the gesture to unlock iOS audio.
-  // Capture the promise so we can await it — iOS only requires the *call* to be in
-  // the gesture window, not that audio scheduling happens there too.
-  const resuming = _ctx.state !== 'running' ? _ctx.resume() : Promise.resolve();
-
-  // Compute hit detection synchronously before any await
-  const hits = [];
+  if (!_ctx) { _ctx = new AudioCtx(); setupAudioRoute(); }
+  if (_ctx.state !== 'running') _ctx.resume();
+  // Fully synchronous — touchend must be able to find notes in touchNotes immediately.
+  // The context is pre-warmed by the document warmUp handler so no await needed.
   for (const touch of e.changedTouches) {
     const [px, py] = canvasPos(touch.clientX, touch.clientY);
     const key = keyAt(px, py);
-    if (key) hits.push({ id: touch.identifier, key });
-  }
-
-  // Wait for the context to actually be running before scheduling oscillators.
-  // iOS Safari drops audio nodes started while the context is still suspended.
-  await resuming;
-
-  for (const { id, key } of hits) {
-    if (touchNotes.has(id)) stopSustainedNote(touchNotes.get(id));
-    touchNotes.set(id, { semitone: key.semitone, ...startSustainedNote(key.semitone) });
+    if (!key) continue;
+    if (touchNotes.has(touch.identifier)) stopSustainedNote(touchNotes.get(touch.identifier));
+    touchNotes.set(touch.identifier, { semitone: key.semitone, ...startSustainedNote(key.semitone) });
   }
   draw();
 }, { passive: false });
