@@ -417,10 +417,23 @@ function makeWavBlob(freq, duration) {
   return new Blob([buf], { type: 'audio/wav' });
 }
 
+// Blob URL cache: freq.toFixed(2) → object URL
+// Pre-populated for every key whenever the tuning changes so there is no
+// WAV generation cost at keypress time.
+const _noteUrls = new Map();
+
+function _noteUrl(freq) {
+  const k = freq.toFixed(2);
+  if (!_noteUrls.has(k)) _noteUrls.set(k, URL.createObjectURL(makeWavBlob(freq, 1.4)));
+  return _noteUrls.get(k);
+}
+
+function warmupNotes() {
+  for (const key of keys) _noteUrl(semitoneFreq(key.semitone, currentTuning));
+}
+
 function scheduleNote(freq) {
-  const url = URL.createObjectURL(makeWavBlob(freq, 1.4));
-  const el  = new Audio(url);
-  el.addEventListener('ended', () => URL.revokeObjectURL(url));
+  const el = new Audio(_noteUrl(freq));
   el.play().catch(() => {});
   setAudioStatus(`${freq.toFixed(1)} Hz`);
 }
@@ -640,6 +653,7 @@ document.querySelectorAll('.tuning-btn').forEach(btn => {
     updateWolfCard();
     updateSafeGrid();
     updateTuningDesc();
+    warmupNotes();
   });
 });
 
@@ -647,6 +661,7 @@ document.querySelectorAll('.tuning-btn').forEach(btn => {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 resizeCanvas();
+warmupNotes();
 updateNoteCard();
 updateWolfCard();
 updateSafeGrid();
