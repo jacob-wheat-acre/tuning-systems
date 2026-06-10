@@ -438,24 +438,21 @@ function makeSineBuffer(actx, freq, duration) {
   return buf;
 }
 
-// One-period looping buffer for sustained touch notes (no loop-point click).
-function makeSineLoopBuffer(actx, freq) {
-  const sr  = actx.sampleRate;
-  const len = Math.round(sr / freq);
-  const buf = actx.createBuffer(1, len, sr);
-  const d   = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = Math.sin(2 * Math.PI * i / len);
-  return buf;
-}
 
 function scheduleNote(actx, freq) {
+  const dur  = 1.4;
+  const now  = actx.currentTime + 0.001;
   const src  = actx.createBufferSource();
   const gain = actx.createGain();
-  src.buffer = makeSineBuffer(actx, freq, 1.4);
+  src.buffer = makeSineBuffer(actx, freq, dur);
   gain.gain.value = 0.5;
   src.connect(gain);
   gain.connect(_out);
-  src.start(actx.currentTime + 0.001);
+  src.start(now);
+  src.stop(now + dur);
+  // Disconnect gain when done so zombie nodes don't accumulate on the MediaStream output.
+  // Accumulated near-zero signals trigger iOS AGC, causing the looping drone artifact.
+  src.addEventListener('ended', () => { try { gain.disconnect(); } catch (_) {} });
   setAudioStatus(`playing ${freq.toFixed(1)} Hz`);
 }
 
@@ -471,26 +468,6 @@ async function playInterval(s1, s2, tuningKey) {
 }
 
 
-function startSustainedNote(semitone) {
-  const freq = semitoneFreq(semitone, currentTuning);
-  const src  = _ctx.createBufferSource();
-  const gain = _ctx.createGain();
-  src.buffer = makeSineLoopBuffer(_ctx, freq);
-  src.loop   = true;
-  gain.gain.value = 0.5;
-  src.connect(gain);
-  gain.connect(_out);
-  src.start(_ctx.currentTime + 0.001);
-  setAudioStatus(`touch ${freq.toFixed(1)} Hz (${_ctx.state})`);
-  return { osc: src, gain };
-}
-
-function stopSustainedNote({ osc, gain }) {
-  const now = _ctx.currentTime;
-  gain.gain.setValueAtTime(gain.gain.value, now);
-  gain.gain.linearRampToValueAtTime(0.0001, now + 0.08);
-  try { osc.stop(now + 0.1); } catch (_) {}
-}
 
 // Test button: reuses _ctx so there's only ever one AudioContext on the page.
 async function testAudio() {
@@ -498,14 +475,20 @@ async function testAudio() {
     setAudioStatus('test: ensuring ctx…');
     const actx = await ensureRunning();
     setAudioStatus(`test: ctx ${actx.state} — scheduling tone…`);
+    const dur  = 0.6;
+    const now  = actx.currentTime + 0.001;
     const src  = actx.createBufferSource();
     const gain = actx.createGain();
-    src.buffer = makeSineBuffer(actx, 440, 0.6);
+    src.buffer = makeSineBuffer(actx, 440, dur);
     gain.gain.value = 0.7;
     src.connect(gain);
     gain.connect(_out);
-    src.start(actx.currentTime + 0.001);
-    src.addEventListener('ended', () => setAudioStatus('test done — did you hear a beep?'));
+    src.start(now);
+    src.stop(now + dur);
+    src.addEventListener('ended', () => {
+      try { gain.disconnect(); } catch (_) {}
+      setAudioStatus('test done — did you hear a beep?');
+    });
     setAudioStatus('test: tone started — listen!');
   } catch (err) {
     setAudioStatus(`test FAILED: ${err.message}`);
