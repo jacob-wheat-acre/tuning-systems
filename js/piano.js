@@ -139,8 +139,10 @@ function isKeySafe(root, tuningKey) {
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentTuning = 'meantone';
 let keys          = [];       // [{semitone, degree, octave, isBlack, x, y, w, h}]
-let selected      = [];       // up to 2 semitone values
+let selected      = [];       // selected semitone values (up to 2 in interval mode, unlimited in chord mode)
 let hovered       = null;
+let chordMode     = false;
+const touchNotes  = new Map(); // touch.identifier → { semitone, osc, gain }
 
 // ── Canvas ────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('piano-canvas');
@@ -194,7 +196,10 @@ window.addEventListener('resize', resizeCanvas);
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
 // Color for a key based on its deviation from ET
-function keyColor(degree, isBlack, isWolf, isSel, isHov) {
+function keyColor(degree, isBlack, isWolf, isSel, isHov, isTouchHeld) {
+  if (isTouchHeld) {
+    return isBlack ? '#00695c' : '#4db6ac'; // teal = actively held by finger
+  }
   if (isSel) {
     return isBlack ? '#1565c0' : '#42a5f5';
   }
@@ -248,17 +253,19 @@ function draw() {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  const tuning = TUNINGS[currentTuning];
-  const wolf   = tuning.wolf;
+  const tuning       = TUNINGS[currentTuning];
+  const wolf         = tuning.wolf;
+  const touchHeld    = new Set([...touchNotes.values()].map(n => n.semitone));
 
   // ── White keys ──
   for (const key of keys) {
     if (key.isBlack) continue;
-    const isWolf = wolf && wolf.includes(key.degree);
-    const isSel  = selected.includes(key.semitone);
-    const isHov  = hovered === key.semitone;
+    const isWolf      = wolf && wolf.includes(key.degree);
+    const isSel       = selected.includes(key.semitone);
+    const isHov       = hovered === key.semitone;
+    const isTouchHeld = touchHeld.has(key.semitone);
 
-    ctx.fillStyle   = keyColor(key.degree, false, isWolf, isSel, isHov);
+    ctx.fillStyle   = keyColor(key.degree, false, isWolf, isSel, isHov, isTouchHeld);
     ctx.strokeStyle = 'rgba(0,0,0,0.25)';
     ctx.lineWidth   = 1;
     roundRect(ctx, key.x + 0.5, key.y + 0.5, key.w - 1, key.h - 1, [0, 0, 5, 5]);
@@ -281,11 +288,12 @@ function draw() {
   // ── Black keys ──
   for (const key of keys) {
     if (!key.isBlack) continue;
-    const isWolf = wolf && wolf.includes(key.degree);
-    const isSel  = selected.includes(key.semitone);
-    const isHov  = hovered === key.semitone;
+    const isWolf      = wolf && wolf.includes(key.degree);
+    const isSel       = selected.includes(key.semitone);
+    const isHov       = hovered === key.semitone;
+    const isTouchHeld = touchHeld.has(key.semitone);
 
-    ctx.fillStyle   = keyColor(key.degree, true, isWolf, isSel, isHov);
+    ctx.fillStyle   = keyColor(key.degree, true, isWolf, isSel, isHov, isTouchHeld);
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.lineWidth   = 1;
     roundRect(ctx, key.x + 0.5, key.y + 0.5, key.w - 1, key.h - 1, [0, 0, 4, 4]);
@@ -364,6 +372,8 @@ function canvasPos(clientX, clientY) {
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
 let _ctx = null;
 
 function setAudioStatus(msg) {
@@ -377,7 +387,7 @@ function setAudioStatus(msg) {
 // so oscillators are never scheduled against a suspended context.
 async function ensureRunning() {
   if (!_ctx) {
-    _ctx = new AudioContext();
+    _ctx = new AudioCtx();
     setAudioStatus(`ctx created: ${_ctx.state}`);
   }
   if (_ctx.state !== 'running') {
@@ -427,10 +437,36 @@ async function playInterval(s1, s2, tuningKey) {
   scheduleNote(actx, semitoneFreq(s2, tuningKey));
 }
 
+async function playChordNotes(semitones) {
+  const actx = await ensureRunning();
+  semitones.forEach(s => scheduleNote(actx, semitoneFreq(s, currentTuning)));
+}
+
+function startSustainedNote(semitone) {
+  const freq = semitoneFreq(semitone, currentTuning);
+  const now  = _ctx.currentTime;
+  const osc  = _ctx.createOscillator();
+  const gain = _ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.32, now);
+  osc.connect(gain);
+  gain.connect(_ctx.destination);
+  osc.start(now + 0.001);
+  return { osc, gain };
+}
+
+function stopSustainedNote({ osc, gain }) {
+  const now = _ctx.currentTime;
+  gain.gain.setValueAtTime(gain.gain.value, now);
+  gain.gain.linearRampToValueAtTime(0.0001, now + 0.08);
+  try { osc.stop(now + 0.1); } catch (_) {}
+}
+
 // Standalone test: creates a fresh AudioContext, resumes it, plays 440 Hz
 async function testAudio() {
   try {
-    const tctx = new AudioContext();
+    const tctx = new AudioCtx();
     setAudioStatus(`test ctx: ${tctx.state}`);
     if (tctx.state !== 'running') {
       await tctx.resume();
@@ -471,12 +507,18 @@ function updateNoteCard() {
   const tuning = TUNINGS[currentTuning];
 
   if (selected.length === 0) {
-    card.innerHTML = '<h3>Selected notes</h3><p style="color:var(--text-dim);font-size:0.82rem;">Tap a key to hear it.<br>Tap a second key to see the interval.</p>';
+    card.innerHTML = chordMode
+      ? '<h3>Chord</h3><p style="color:var(--text-dim);font-size:0.82rem;">Tap keys to build a chord.<br>Tap again to remove a note.</p>'
+      : '<h3>Selected notes</h3><p style="color:var(--text-dim);font-size:0.82rem;">Tap a key to hear it.<br>Tap a second key to see the interval.</p>';
     return;
   }
 
-  let html = '<h3>Selected notes</h3>';
-  selected.forEach(s => {
+  const sorted = [...selected].sort((a, b) => a - b);
+  let html = chordMode
+    ? `<h3>Chord &nbsp;<span style="font-weight:400;font-size:0.75rem;color:var(--text-dim)">${sorted.map(s => NOTE_NAMES[s % 12]).join(' – ')}</span></h3>`
+    : '<h3>Selected notes</h3>';
+
+  sorted.forEach(s => {
     const deg  = s % 12;
     const freq = semitoneFreq(s, currentTuning).toFixed(2);
     const dev  = tuning.cents[deg] - ET_C[deg];
@@ -488,8 +530,8 @@ function updateNoteCard() {
     </div>`;
   });
 
-  if (selected.length === 2) {
-    const [s1, s2] = selected.sort((a, b) => a - b);
+  if (!chordMode && sorted.length === 2) {
+    const [s1, s2] = sorted;
     const f1    = semitoneFreq(s1, currentTuning);
     const f2    = semitoneFreq(s2, currentTuning);
     const actualCents = 1200 * Math.log2(f2 / f1);
@@ -578,21 +620,30 @@ async function handleKeyTap(clientX, clientY) {
   const key = keyAt(px, py);
   if (!key) return;
 
-  setAudioStatus(`playing ${NOTE_NAMES[key.degree]}${key.octave} @ ${semitoneFreq(key.semitone, currentTuning).toFixed(1)} Hz`);
+  setAudioStatus(`${NOTE_NAMES[key.degree]}${key.octave} @ ${semitoneFreq(key.semitone, currentTuning).toFixed(1)} Hz`);
 
-  if (selected.includes(key.semitone)) {
-    selected = selected.filter(s => s !== key.semitone);
-    playKey(key.semitone, currentTuning);
-  } else if (selected.length < 2) {
-    selected.push(key.semitone);
-    if (selected.length === 2) {
-      playInterval(selected[0], selected[1], currentTuning);
+  if (chordMode) {
+    if (selected.includes(key.semitone)) {
+      selected = selected.filter(s => s !== key.semitone);
     } else {
-      playKey(key.semitone, currentTuning);
+      selected.push(key.semitone);
     }
+    if (selected.length > 0) await playChordNotes(selected);
   } else {
-    selected = [selected[1], key.semitone];
-    playInterval(selected[0], selected[1], currentTuning);
+    if (selected.includes(key.semitone)) {
+      selected = selected.filter(s => s !== key.semitone);
+      playKey(key.semitone, currentTuning);
+    } else if (selected.length < 2) {
+      selected.push(key.semitone);
+      if (selected.length === 2) {
+        playInterval(selected[0], selected[1], currentTuning);
+      } else {
+        playKey(key.semitone, currentTuning);
+      }
+    } else {
+      selected = [selected[1], key.semitone];
+      playInterval(selected[0], selected[1], currentTuning);
+    }
   }
 
   draw();
@@ -600,10 +651,9 @@ async function handleKeyTap(clientX, clientY) {
 }
 
 canvas.addEventListener('click', async e => {
-  // Create and resume AudioContext synchronously within the user gesture.
-  // iOS Safari requires both to happen before any await, or audio stays blocked.
-  if (!_ctx) _ctx = new AudioContext();
-  if (_ctx.state === 'suspended') _ctx.resume().catch(() => {});
+  if (!_ctx) _ctx = new AudioCtx();
+  // Call resume() synchronously within the gesture window — iOS drops the gesture after any await
+  if (_ctx.state !== 'running') _ctx.resume();
 
   const r = canvas.getBoundingClientRect();
   const [px, py] = canvasPos(e.clientX, e.clientY);
@@ -617,15 +667,50 @@ canvas.addEventListener('click', async e => {
   await handleKeyTap(e.clientX, e.clientY);
 });
 
-canvas.addEventListener('touchstart', async e => {
-  e.preventDefault(); // prevent scroll and the follow-up click event
-  // Create and resume AudioContext synchronously within the user gesture.
-  // iOS Safari requires both to happen before any await, or audio stays blocked.
-  if (!_ctx) _ctx = new AudioContext();
-  if (_ctx.state === 'suspended') _ctx.resume().catch(() => {});
-  const touch = e.touches[0];
-  await handleKeyTap(touch.clientX, touch.clientY);
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!_ctx) _ctx = new AudioCtx();
+  // Fire-and-forget: resume() must be called synchronously inside the gesture window.
+  // iOS Safari closes the gesture context after any await, so we never await here.
+  if (_ctx.state !== 'running') _ctx.resume();
+  for (const touch of e.changedTouches) {
+    const [px, py] = canvasPos(touch.clientX, touch.clientY);
+    const key = keyAt(px, py);
+    if (!key) continue;
+    if (touchNotes.has(touch.identifier)) stopSustainedNote(touchNotes.get(touch.identifier));
+    touchNotes.set(touch.identifier, { semitone: key.semitone, ...startSustainedNote(key.semitone) });
+  }
+  draw();
 }, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const existing = touchNotes.get(touch.identifier);
+    if (!existing) continue;
+    const [px, py] = canvasPos(touch.clientX, touch.clientY);
+    const key = keyAt(px, py);
+    if (!key || key.semitone === existing.semitone) continue;
+    stopSustainedNote(existing);
+    touchNotes.set(touch.identifier, { semitone: key.semitone, ...startSustainedNote(key.semitone) });
+    draw();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const node = touchNotes.get(touch.identifier);
+    if (node) { stopSustainedNote(node); touchNotes.delete(touch.identifier); }
+  }
+  draw();
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', () => {
+  touchNotes.forEach(stopSustainedNote);
+  touchNotes.clear();
+  draw();
+});
 
 canvas.addEventListener('mousemove', e => {
   const [px, py] = canvasPos(e.clientX, e.clientY);
@@ -646,12 +731,22 @@ document.querySelectorAll('.tuning-btn').forEach(btn => {
     btn.classList.add('active');
     currentTuning = btn.dataset.tuning;
     selected = [];
+    touchNotes.forEach(stopSustainedNote);
+    touchNotes.clear();
     draw();
     updateNoteCard();
     updateWolfCard();
     updateSafeGrid();
     updateTuningDesc();
   });
+});
+
+document.getElementById('chord-mode-btn').addEventListener('click', () => {
+  chordMode = !chordMode;
+  document.getElementById('chord-mode-btn').classList.toggle('active', chordMode);
+  selected = [];
+  draw();
+  updateNoteCard();
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

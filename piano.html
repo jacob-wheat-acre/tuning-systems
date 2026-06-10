@@ -30,6 +30,8 @@
     .tuning-btn[data-tuning="werckmeister"].active { background:#2d2d10; border-color:#fff176; color:#fff176; }
     .tuning-btn[data-tuning="equal"].active        { background:#0e2d3f; border-color:#4fc3f7; color:#4fc3f7; }
 
+    #chord-mode-btn.active { background:#00352c; border-color:#4db6ac; color:#4db6ac; }
+
     /* ── piano canvas ── */
     .piano-wrap {
       background: #111;
@@ -206,6 +208,9 @@
           <button class="tuning-btn" data-tuning="werckmeister">Werckmeister III</button>
           <button class="tuning-btn" data-tuning="equal">Equal Temperament</button>
         </div>
+        <button id="chord-mode-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;font-weight:600;padding:7px 14px;white-space:nowrap;touch-action:manipulation;">
+          Chord
+        </button>
         <button id="test-audio-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:0.78rem;padding:7px 14px;white-space:nowrap;">
           🔊 Test Audio
         </button>
