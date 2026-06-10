@@ -761,6 +761,17 @@ document.getElementById('chord-mode-btn').addEventListener('click', () => {
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
+
+// Pre-warm the AudioContext on the very first touch anywhere on the page.
+// iOS requires AudioContext creation + resume() to happen inside a user gesture.
+// Doing it here (before the first piano key tap) ensures the context is already
+// running by the time any note is requested.
+document.addEventListener('touchstart', function warmUp() {
+  if (!_ctx) _ctx = new AudioCtx();
+  if (_ctx.state !== 'running') _ctx.resume();
+  document.removeEventListener('touchstart', warmUp);
+}, { passive: true, capture: true });
+
 resizeCanvas();
 updateNoteCard();
 updateWolfCard();
