@@ -371,48 +371,9 @@ function canvasPos(clientX, clientY) {
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-
-let _ctx = null;
-let _out = null; // AudioNode all voices connect to
-
 function setAudioStatus(msg) {
   const el = document.getElementById('audio-status');
   if (el) el.textContent = msg;
-  console.log('[piano audio]', msg);
-}
-
-// On iPadOS 26, AudioContext uses a different audio session category than
-// <audio> elements and is silenced by the software mute switch. Routing Web
-// Audio through a MediaStreamDestination → <audio srcObject> forces the
-// "playback" session, which is never muted. Called synchronously inside a
-// user gesture so el.play() has gesture context.
-function setupAudioRoute() {
-  try {
-    const streamDest = _ctx.createMediaStreamDestination();
-    const el = new Audio();
-    el.srcObject = streamDest.stream;
-    el.play().catch(() => {});
-    _out = streamDest;
-    setAudioStatus('route: stream→audio element');
-  } catch (_e) {
-    _out = _ctx.destination;
-    setAudioStatus('route: direct destination');
-  }
-}
-
-async function ensureRunning() {
-  if (!_ctx) {
-    _ctx = new AudioCtx();
-    setupAudioRoute();
-    setAudioStatus(`ctx created: ${_ctx.state}`);
-  }
-  if (_ctx.state !== 'running') {
-    setAudioStatus(`resuming (was ${_ctx.state})…`);
-    await _ctx.resume();
-    setAudioStatus(`ctx now: ${_ctx.state}`);
-  }
-  return _ctx;
 }
 
 // C3 = 130.813 Hz (A4=440 → C3 = 440 × 2^(-21/12))
@@ -420,86 +381,16 @@ const C3_HZ = 130.813;
 
 function semitoneFreq(semitone, tuningKey) {
   const degree = semitone % 12;
-  const octave = Math.floor(semitone / 12); // 0 = octave 3
+  const octave = Math.floor(semitone / 12);
   const cents  = TUNINGS[tuningKey].cents[degree];
   return C3_HZ * Math.pow(2, octave + cents / 1200);
 }
 
-// Build a PCM sine-wave buffer. More reliable than OscillatorNode on iOS 26 Safari.
-function makeSineBuffer(actx, freq, duration) {
-  const sr   = actx.sampleRate;
-  const n    = Math.ceil(sr * duration);
-  const buf  = actx.createBuffer(1, n, sr);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) {
-    const t = i / sr;
-    data[i] = Math.sin(2 * Math.PI * freq * t) * Math.max(0, 1 - t / duration);
-  }
-  return buf;
-}
-
-
-function scheduleNote(actx, freq) {
-  const dur  = 1.4;
-  const now  = actx.currentTime + 0.001;
-  const src  = actx.createBufferSource();
-  const gain = actx.createGain();
-  src.buffer = makeSineBuffer(actx, freq, dur);
-  gain.gain.value = 0.5;
-  src.connect(gain);
-  gain.connect(_out);
-  src.start(now);
-  src.stop(now + dur);
-  // Disconnect gain when done so zombie nodes don't accumulate on the MediaStream output.
-  // Accumulated near-zero signals trigger iOS AGC, causing the looping drone artifact.
-  src.addEventListener('ended', () => { try { gain.disconnect(); } catch (_) {} });
-  setAudioStatus(`playing ${freq.toFixed(1)} Hz`);
-}
-
-async function playKey(semitone, tuningKey) {
-  const actx = await ensureRunning();
-  scheduleNote(actx, semitoneFreq(semitone, tuningKey));
-}
-
-async function playInterval(s1, s2, tuningKey) {
-  const actx = await ensureRunning();
-  scheduleNote(actx, semitoneFreq(s1, tuningKey));
-  scheduleNote(actx, semitoneFreq(s2, tuningKey));
-}
-
-
-
-// Test button: reuses _ctx so there's only ever one AudioContext on the page.
-async function testAudio() {
-  try {
-    setAudioStatus('test: ensuring ctx…');
-    const actx = await ensureRunning();
-    setAudioStatus(`test: ctx ${actx.state} — scheduling tone…`);
-    const dur  = 0.6;
-    const now  = actx.currentTime + 0.001;
-    const src  = actx.createBufferSource();
-    const gain = actx.createGain();
-    src.buffer = makeSineBuffer(actx, 440, dur);
-    gain.gain.value = 0.7;
-    src.connect(gain);
-    gain.connect(_out);
-    src.start(now);
-    src.stop(now + dur);
-    src.addEventListener('ended', () => {
-      try { gain.disconnect(); } catch (_) {}
-      setAudioStatus('test done — did you hear a beep?');
-    });
-    setAudioStatus('test: tone started — listen!');
-  } catch (err) {
-    setAudioStatus(`test FAILED: ${err.message}`);
-    console.error('[piano audio] testAudio error:', err);
-  }
-}
-
-document.getElementById('test-audio-btn').addEventListener('click', testAudio);
-
-// ── HTML Audio test (bypasses Web Audio API entirely) ─────────────────────────
-// If this works but WebAudio doesn't, the issue is audio session category.
+// Build a WAV blob: sine wave with linear fade-out envelope.
+// Notes are played via HTML <audio> rather than Web Audio API.
+// AudioContext.destination uses iOS's 'ambient' audio session (silenced by
+// software mute) and the MediaStreamDestination workaround triggers AGC-driven
+// looping artifacts. HTML <audio> uses the 'playback' session with no issues.
 function makeWavBlob(freq, duration) {
   const sr  = 22050;
   const n   = Math.floor(sr * duration);
@@ -509,13 +400,13 @@ function makeWavBlob(freq, duration) {
   const str = s => { for (let i = 0; i < s.length; i++) v.setUint8(o++, s.charCodeAt(i)); };
   str('RIFF'); v.setUint32(o, 36 + n * 2, true); o += 4;
   str('WAVE'); str('fmt ');
-  v.setUint32(o, 16, true);      o += 4;
-  v.setUint16(o, 1, true);       o += 2;  // PCM
-  v.setUint16(o, 1, true);       o += 2;  // mono
-  v.setUint32(o, sr, true);      o += 4;  // sample rate
-  v.setUint32(o, sr * 2, true);  o += 4;  // byte rate
-  v.setUint16(o, 2, true);       o += 2;  // block align
-  v.setUint16(o, 16, true);      o += 2;  // bits per sample
+  v.setUint32(o, 16, true);     o += 4;
+  v.setUint16(o, 1, true);      o += 2;
+  v.setUint16(o, 1, true);      o += 2;
+  v.setUint32(o, sr, true);     o += 4;
+  v.setUint32(o, sr * 2, true); o += 4;
+  v.setUint16(o, 2, true);      o += 2;
+  v.setUint16(o, 16, true);     o += 2;
   str('data'); v.setUint32(o, n * 2, true); o += 4;
   for (let i = 0; i < n; i++) {
     const t   = i / sr;
@@ -526,17 +417,24 @@ function makeWavBlob(freq, duration) {
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-document.getElementById('test-html-btn').addEventListener('click', () => {
-  setAudioStatus('html: generating…');
-  const url   = URL.createObjectURL(makeWavBlob(440, 0.6));
-  const audio = new Audio(url);
-  audio.play()
-    .then(() => {
-      setAudioStatus('html: playing — can you hear it?');
-      audio.addEventListener('ended', () => { URL.revokeObjectURL(url); setAudioStatus('html: done'); });
-    })
-    .catch(err => setAudioStatus(`html FAILED: ${err.message}`));
-});
+function scheduleNote(freq) {
+  const url = URL.createObjectURL(makeWavBlob(freq, 1.4));
+  const el  = new Audio(url);
+  el.addEventListener('ended', () => URL.revokeObjectURL(url));
+  el.play().catch(() => {});
+  setAudioStatus(`${freq.toFixed(1)} Hz`);
+}
+
+function playKey(semitone, tuningKey) {
+  scheduleNote(semitoneFreq(semitone, tuningKey));
+}
+
+function playInterval(s1, s2, tuningKey) {
+  scheduleNote(semitoneFreq(s1, tuningKey));
+  scheduleNote(semitoneFreq(s2, tuningKey));
+}
+
+document.getElementById('test-audio-btn').addEventListener('click', () => scheduleNote(440));
 
 // ── UI updates ────────────────────────────────────────────────────────────────
 
@@ -655,12 +553,10 @@ function nearestPureCents(semitones) {
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
-async function handleKeyTap(clientX, clientY) {
+function handleKeyTap(clientX, clientY) {
   const [px, py] = canvasPos(clientX, clientY);
   const key = keyAt(px, py);
   if (!key) return;
-
-  setAudioStatus(`${NOTE_NAMES[key.degree]}${key.octave} @ ${semitoneFreq(key.semitone, currentTuning).toFixed(1)} Hz`);
 
   if (selected.includes(key.semitone)) {
     selected = selected.filter(s => s !== key.semitone);
@@ -681,32 +577,17 @@ async function handleKeyTap(clientX, clientY) {
   updateNoteCard();
 }
 
-canvas.addEventListener('click', async e => {
-  if (!_ctx) _ctx = new AudioCtx();
-  // Call resume() synchronously within the gesture window — iOS drops the gesture after any await
-  if (_ctx.state !== 'running') _ctx.resume();
-
-  const r = canvas.getBoundingClientRect();
-  const [px, py] = canvasPos(e.clientX, e.clientY);
-  console.log(
-    `[piano] click canvas=(${px.toFixed(1)}, ${py.toFixed(1)})`,
-    `| canvas size: ${canvas.width}×${canvas.height}`,
-    `| display: ${r.width.toFixed(0)}×${r.height.toFixed(0)}`,
-    `| ctx state: ${_ctx?.state ?? '(no ctx)'}`
-  );
-
-  await handleKeyTap(e.clientX, e.clientY);
+canvas.addEventListener('click', e => {
+  handleKeyTap(e.clientX, e.clientY);
 });
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if (!_ctx) { _ctx = new AudioCtx(); setupAudioRoute(); }
-  if (_ctx.state !== 'running') _ctx.resume();
   for (const touch of e.changedTouches) {
     const [px, py] = canvasPos(touch.clientX, touch.clientY);
     const key = keyAt(px, py);
     if (!key) continue;
-    scheduleNote(_ctx, semitoneFreq(key.semitone, currentTuning));
+    scheduleNote(semitoneFreq(key.semitone, currentTuning));
     touchNotes.set(touch.identifier, { semitone: key.semitone });
   }
   draw();
@@ -720,7 +601,7 @@ canvas.addEventListener('touchmove', e => {
     const [px, py] = canvasPos(touch.clientX, touch.clientY);
     const key = keyAt(px, py);
     if (!key || key.semitone === existing.semitone) continue;
-    scheduleNote(_ctx, semitoneFreq(key.semitone, currentTuning));
+    scheduleNote(semitoneFreq(key.semitone, currentTuning));
     touchNotes.set(touch.identifier, { semitone: key.semitone });
     draw();
   }
@@ -764,19 +645,6 @@ document.querySelectorAll('.tuning-btn').forEach(btn => {
 
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-
-// Pre-warm the AudioContext on the very first touch anywhere on the page.
-// iOS requires AudioContext creation + resume() to happen inside a user gesture.
-// Doing it here (before the first piano key tap) ensures the context is already
-// running by the time any note is requested.
-document.addEventListener('touchstart', function warmUp() {
-  if (!_ctx) {
-    _ctx = new AudioCtx();
-    setupAudioRoute(); // must be synchronous within gesture for el.play()
-  }
-  if (_ctx.state !== 'running') _ctx.resume();
-  document.removeEventListener('touchstart', warmUp);
-}, { passive: true, capture: true });
 
 resizeCanvas();
 updateNoteCard();
